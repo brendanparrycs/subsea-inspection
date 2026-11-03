@@ -54,7 +54,6 @@ private:
         double pitch_deg = pitch * rad2deg;
         double yaw_deg = yaw * rad2deg;
 
-        // Logs every 1000 milliseconds (1 Hz)
         RCLCPP_INFO_THROTTLE(
             this->get_logger(),
             *this->get_clock(),
