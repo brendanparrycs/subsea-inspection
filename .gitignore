@@ -10,3 +10,7 @@ log/
 # Temporary files
 *.swp
 *~
+eeprom.bin
+
+# Local Docs
+docs/
