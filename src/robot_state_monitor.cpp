@@ -1,4 +1,3 @@
-#include <chrono>
 #include <cmath>
 #include <memory>
 
@@ -8,7 +7,6 @@
 #include "tf2/LinearMath/Quaternion.hpp"
 
 /// @brief ROS 2 node for monitoring BlueROV2 odometry (position, altitude, speed) from Gazebo via ros_gz_bridge.
-/// @note Requires @c use_sim_time:=true to synchronize logging with the Gazebo simulation clock.
 class RobotStateMonitor: public rclcpp::Node {
 public:
     /// @brief Constructs node, declares `odom_topic` parameter, configures reliable QoS, and subscribes to odometry.

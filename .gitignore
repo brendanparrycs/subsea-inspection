@@ -1,11 +1,19 @@
-# ROS 2 / colcon
+# ROS 2 / colcon / ArduSub
 build/
 install/
 log/
+logs/
+*.BIN
+LASTLOG.TXT
 
 # IDE
 .vscode/
 .idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
 
 # Temporary files
 *.swp
