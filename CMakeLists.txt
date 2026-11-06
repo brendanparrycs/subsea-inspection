@@ -97,10 +97,11 @@ install(DIRECTORY include/
     DESTINATION include
 )
 
-# Install launch and config directories
+# Install launch, config, and models directories
 install(DIRECTORY 
     launch
     config
+    models
     DESTINATION share/${PROJECT_NAME}
     OPTIONAL
 )
