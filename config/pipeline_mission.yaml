@@ -1,0 +1,29 @@
+mission:
+  name: "pipeline_inspection_alpha"
+  default_acceptance_radius: 1.0 # meters
+  default_speed: 0.5
+  timeout_per_waypoint_sec: 45.0 # seconds before aborting if stuck
+  waypoints:
+    - name: "pipe_entry"
+      x: 3.0
+      y: 0.0
+      z: -2.0
+      dwell_sec: 2.0 # Pause for 2s to simulate camera/sonar reading
+    
+    - name: "mid_pipe_checkpoint"
+      x: 7.0
+      y: 1.0
+      z: -2.0
+      dwell_sec: 1.0
+
+    - name: "deep_section_entry"
+      x: 11.0
+      y: 1.0
+      z: -3.0
+      dwell_sec: 2.0
+
+    - name: "survey_station"
+      x: 11.0
+      y: -1.0
+      z: -3.0
+      dwell_sec: 3.0

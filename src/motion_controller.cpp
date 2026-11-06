@@ -107,7 +107,7 @@ private:
         float x = static_cast<float>(std::clamp(target_surge * linear_scale_, -1000.0, 1000.0));
         float y = static_cast<float>(std::clamp(target_sway * linear_scale_, -1000.0, 1000.0));
         float z = static_cast<float>(500.0 + std::clamp(target_heave * linear_scale_, -500.0, 500.0));
-        float r = static_cast<float>(std::clamp(target_yaw * angular_scale_, -1000.0, 1000.0));
+        float r = static_cast<float>(std::clamp(-target_yaw * angular_scale_, -1000.0, 1000.0));
 
         send_control(x, y, z, r);
     }

@@ -1,0 +1,14 @@
+# Goal
+float64 target_x
+float64 target_y
+float64 target_z
+float64 acceptance_radius
+---
+# Result
+bool success
+float64 elapsed_time
+float64 final_distance
+---
+# Feedback
+float64 distance_remaining
+float64 heading_error_deg
