@@ -175,6 +175,14 @@ def generate_launch_description():
         parameters=[{"use_sim_time": True}]
     )
 
+    obstacle_detector_node = Node(
+        package="subsea_inspection",
+        executable="obstacle_detector",
+        name="obstacle_detector",
+        output="screen",
+        parameters=[{"use_sim_time": True}]
+    )
+
     return LaunchDescription([
         start_sim_arg,
         gui_arg,
@@ -185,4 +193,5 @@ def generate_launch_description():
         depth_camera_tf_node,
         motion_controller_node,
         robot_state_monitor_node,
+        obstacle_detector_node,
     ])

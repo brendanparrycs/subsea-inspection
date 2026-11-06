@@ -17,6 +17,7 @@ find_package(mavros_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(yaml-cpp REQUIRED)
+find_package(visualization_msgs REQUIRED)
 
 # Generate custom ROS 2 action interfaces
 rosidl_generate_interfaces(${PROJECT_NAME}
@@ -81,6 +82,15 @@ target_link_libraries(mission_planner
     "${cpp_typesupport_target}"
 )
 
+# Build the obstacle_detector executable
+add_executable(obstacle_detector src/obstacle_detector.cpp)
+target_link_libraries(obstacle_detector
+    rclcpp::rclcpp
+    sensor_msgs::sensor_msgs
+    geometry_msgs::geometry_msgs
+    visualization_msgs::visualization_msgs
+)
+
 # Install executables to lib/subsea_inspection
 install(TARGETS
     robot_state_monitor
@@ -89,6 +99,7 @@ install(TARGETS
     joystick_teleop
     waypoint_navigator
     mission_planner
+    obstacle_detector
     DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -118,6 +129,10 @@ if(BUILD_TESTING)
     # Unit test for geometry utilities
     ament_add_gtest(test_geometry_utils test/test_geometry_utils.cpp)
     target_include_directories(test_geometry_utils PRIVATE include)
+
+    # Unit test for PointCloudFilter
+    ament_add_gtest(test_point_cloud_filter test/test_point_cloud_filter.cpp)
+    target_include_directories(test_point_cloud_filter PRIVATE include)
 endif()
 
 ament_package()
