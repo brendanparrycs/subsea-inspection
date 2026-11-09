@@ -78,6 +78,8 @@ add_executable(mission_planner src/mission_planner.cpp)
 target_link_libraries(mission_planner
     rclcpp::rclcpp
     rclcpp_action::rclcpp_action
+    nav_msgs::nav_msgs
+    geometry_msgs::geometry_msgs
     yaml-cpp
     "${cpp_typesupport_target}"
 )

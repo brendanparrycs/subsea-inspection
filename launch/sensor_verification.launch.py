@@ -104,7 +104,7 @@ def generate_launch_description():
         ),
         launch_arguments={
             "namespace": "bluerov2_heavy",
-            "world_name": "posim_ocean_waves",
+            "world_name": "oceans_waves",
             "use_ardusub": "true",
             "use_teleop": "false",
             "use_web_joystick": "false",
