@@ -10,6 +10,7 @@
 #include "nav_msgs/msg/odometry.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "yaml-cpp/yaml.h"
 
 #include "subsea_inspection/action/navigate_to_waypoint.hpp"
@@ -109,6 +110,12 @@ public:
             obstacle_topic_,
             10,
             std::bind(&MissionPlanner::obstacle_callback, this, std::placeholders::_1)
+        );
+
+        // Publisher for mission completion notification
+        mission_complete_publisher_ = this->create_publisher<std_msgs::msg::Bool>(
+            "/mission/complete",
+            10
         );
 
         // 100ms (10Hz) sequencer loop timer
@@ -368,6 +375,11 @@ private:
 
             case MissionState::MISSION_COMPLETE: {
                 print_mission_report();
+
+                auto complete_msg = std_msgs::msg::Bool();
+                complete_msg.data = true;
+                mission_complete_publisher_->publish(complete_msg);
+
                 timer_->cancel();
                 break;
             }
@@ -671,6 +683,9 @@ private:
 
     /// @brief Obstacle subscriber for closest point detections in safety corridor.
     rclcpp::Subscription<geometry_msgs::msg::PointStamped>::SharedPtr obstacle_subscription_;
+
+    /// @brief Publisher notifying downstream subsystems of mission completion.
+    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr mission_complete_publisher_;
 
     /// @brief 100ms (10Hz) periodic loop timer for the sequencer state machine.
     rclcpp::TimerBase::SharedPtr timer_;

@@ -18,6 +18,8 @@ find_package(sensor_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(visualization_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 
 # Generate custom ROS 2 action interfaces
 rosidl_generate_interfaces(${PROJECT_NAME}
@@ -80,6 +82,8 @@ target_link_libraries(mission_planner
     rclcpp_action::rclcpp_action
     nav_msgs::nav_msgs
     geometry_msgs::geometry_msgs
+    std_msgs::std_msgs
+    std_srvs::std_srvs
     yaml-cpp
     "${cpp_typesupport_target}"
 )
@@ -100,6 +104,8 @@ target_link_libraries(inspection_tracker
     nav_msgs::nav_msgs
     geometry_msgs::geometry_msgs
     visualization_msgs::visualization_msgs
+    std_msgs::std_msgs
+    std_srvs::std_srvs
     tf2::tf2
     tf2_geometry_msgs::tf2_geometry_msgs
     yaml-cpp

@@ -1,7 +1,12 @@
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <ctime>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -9,6 +14,8 @@
 #include "nav_msgs/msg/odometry.hpp"
 #include "geometry_msgs/msg/point_stamped.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
+#include "std_msgs/msg/bool.hpp"
+#include "std_srvs/srv/trigger.hpp"
 #include "tf2/LinearMath/Matrix3x3.hpp"
 #include "tf2/LinearMath/Quaternion.hpp"
 #include "yaml-cpp/yaml.h"
@@ -38,6 +45,7 @@ public:
         // Declare and get parameters
         this->declare_parameter<std::string>("mission_file", mission_file_);
         this->declare_parameter<std::string>("odometry_topic", odometry_topic_);
+        this->declare_parameter<std::string>("report_directory", "reports");
         this->declare_parameter<double>("standoff_height", standoff_height_);
         this->declare_parameter<double>("bin_resolution", bin_resolution_);
         this->declare_parameter<double>("min_standoff", 0.50);
@@ -47,6 +55,7 @@ public:
 
         mission_file_ = this->get_parameter("mission_file").as_string();
         odometry_topic_ = this->get_parameter("odometry_topic").as_string();
+        report_directory_ = this->get_parameter("report_directory").as_string();
         standoff_height_ = this->get_parameter("standoff_height").as_double();
         bin_resolution_ = this->get_parameter("bin_resolution").as_double();
 
@@ -86,6 +95,19 @@ public:
         markers_publisher_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
             "/inspection/markers",
             10
+        );
+
+        // Subscription for mission completion to trigger post-survey report
+        mission_complete_subscription_ = this->create_subscription<std_msgs::msg::Bool>(
+            "/mission/complete",
+            10,
+            std::bind(&InspectionTracker::mission_complete_callback, this, std::placeholders::_1)
+        );
+
+        // Service to trigger report generation on demand
+        report_service_ = this->create_service<std_srvs::srv::Trigger>(
+            "/inspection/generate_report",
+            std::bind(&InspectionTracker::handle_generate_report, this, std::placeholders::_1, std::placeholders::_2)
         );
 
         RCLCPP_INFO(
@@ -274,6 +296,175 @@ private:
 
         markers_publisher_->publish(marker_array);
     }
+
+    /// @brief Callback when mission planner announces mission completion.
+    /// @param msg Message containing completion boolean.
+    void mission_complete_callback(const std_msgs::msg::Bool::SharedPtr msg) {
+        if (msg->data && !report_generated_) {
+            RCLCPP_INFO(this->get_logger(), "Mission completion signal received. Generating post-survey inspection report...");
+            generate_survey_report();
+        }
+    }
+
+    /// @brief Service handler to trigger post-survey report generation on demand.
+    /// @param request Trigger request.
+    /// @param response Response with success flag and filepath message.
+    void handle_generate_report(
+        const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
+        std::shared_ptr<std_srvs::srv::Trigger::Response> response
+    ) {
+        std::string report_path;
+        bool ok = generate_survey_report(&report_path);
+        response->success = ok;
+        response->message = ok ? ("Report generated at: " + report_path) : "Failed to generate report";
+    }
+
+    /// @brief Generates comprehensive YAML inspection report and prints executive summary to console.
+    /// @param out_filepath Optional pointer to store the generated report's absolute file path.
+    /// @return True if report was successfully written.
+    bool generate_survey_report(std::string *out_filepath = nullptr) {
+        if (!tracker_ || tracker_->get_segment_count() == 0) {
+            RCLCPP_WARN(this->get_logger(), "Cannot generate report: tracker model is empty.");
+            return false;
+        }
+
+        // Ensure reports directory exists
+        std::filesystem::path dir_path(report_directory_);
+        if (!std::filesystem::exists(dir_path)) {
+            std::filesystem::create_directories(dir_path);
+        }
+
+        // Timestamp string
+        auto now = std::chrono::system_clock::now();
+        std::time_t time_t_now = std::chrono::system_clock::to_time_t(now);
+        std::tm tm_now{};
+        localtime_r(&time_t_now, &tm_now);
+
+        char time_str[64];
+        std::strftime(time_str, sizeof(time_str), "%Y%m%d_%H%M%S", &tm_now);
+
+        std::string filename = "survey_report_" + std::string(time_str) + ".yaml";
+        std::filesystem::path full_path = dir_path / filename;
+
+        double total_len = tracker_->get_total_pipeline_length_m();
+        double inspected_len = tracker_->get_inspected_length_m();
+        double coverage_pct = tracker_->get_coverage_percentage();
+        double uninspected_len = std::max(0.0, total_len - inspected_len);
+
+        auto gaps = tracker_->get_uninspected_gaps(0.15);
+        auto breakdown = tracker_->get_segment_coverage_breakdown();
+
+        // Write YAML report file
+        std::ofstream ofs(full_path);
+        if (!ofs.is_open()) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to open report file for writing: %s", full_path.string().c_str());
+            return false;
+        }
+
+        ofs << "# Autonomous Subsea Inspection — Post-Survey Quality Report\n";
+        ofs << "survey_report:\n";
+        ofs << "  timestamp: \"" << std::string(time_str) << "\"\n";
+        ofs << "  mission_file: \"" << mission_file_ << "\"\n";
+        ofs << "  pipeline_metrics:\n";
+        ofs << "    total_length_m: " << std::fixed << std::setprecision(2) << total_len << "\n";
+        ofs << "    inspected_length_m: " << inspected_len << "\n";
+        ofs << "    uninspected_length_m: " << uninspected_len << "\n";
+        ofs << "    certified_coverage_percent: " << std::setprecision(1) << coverage_pct << "\n";
+        ofs << "    bin_resolution_m: " << std::setprecision(2) << bin_resolution_ << "\n";
+        ofs << "    total_segments: " << tracker_->get_segment_count() << "\n";
+        ofs << "\n";
+        ofs << "  inspection_criteria:\n";
+        ofs << "    min_standoff_m: " << criteria_.min_standoff_m << "\n";
+        ofs << "    max_standoff_m: " << criteria_.max_standoff_m << "\n";
+        ofs << "    max_cross_track_m: " << criteria_.max_cross_track_m << "\n";
+        ofs << "    max_heading_error_deg: " << criteria_.max_heading_error_deg << "\n";
+        ofs << "\n";
+        ofs << "  uninspected_gaps:\n";
+        if (gaps.empty()) {
+            ofs << "    []\n";
+        } else {
+            for (const auto &gap : gaps) {
+                ofs << "    - gap_id: " << gap.gap_id << "\n";
+                ofs << "      start_s_m: " << gap.start_s_m << "\n";
+                ofs << "      end_s_m: " << gap.end_s_m << "\n";
+                ofs << "      length_m: " << gap.length_m << "\n";
+                ofs << "      segment_index: " << gap.segment_index + 1 << "\n";
+                ofs << "      segment_name: \"" << gap.segment_name << "\"\n";
+            }
+        }
+        ofs << "\n";
+        ofs << "  segment_breakdown:\n";
+        for (const auto &sc : breakdown) {
+            ofs << "    - index: " << sc.index + 1 << "\n";
+            ofs << "      name: \"" << sc.name << "\"\n";
+            ofs << "      length_m: " << sc.length_m << "\n";
+            ofs << "      inspected_length_m: " << sc.inspected_length_m << "\n";
+            ofs << "      coverage_percent: " << sc.coverage_percent << "\n";
+        }
+        ofs.close();
+
+        // Print formatted executive summary report to console
+        RCLCPP_INFO(this->get_logger(), "======================================================================");
+        RCLCPP_INFO(this->get_logger(), "            AUTONOMOUS SUBSEA PIPELINE SURVEY REPORT                 ");
+        RCLCPP_INFO(this->get_logger(), "======================================================================");
+        RCLCPP_INFO(this->get_logger(), " Total Pipeline Length:       %6.2f m (%zu segments)", total_len, tracker_->get_segment_count());
+        RCLCPP_INFO(this->get_logger(), " Certified Inspected Length:  %6.2f m", inspected_len);
+        RCLCPP_INFO(this->get_logger(), " Uninspected Gap Length:      %6.2f m", uninspected_len);
+        RCLCPP_INFO(this->get_logger(), " Overall Certified Coverage:  %6.1f %%", coverage_pct);
+        RCLCPP_INFO(this->get_logger(), " Discretization Resolution:   %6.2f m", bin_resolution_);
+        RCLCPP_INFO(this->get_logger(), "----------------------------------------------------------------------");
+        RCLCPP_INFO(this->get_logger(), " UNINSPECTED GAP REGISTRY (%zu Gaps >= 0.15 m):", gaps.size());
+        if (gaps.empty()) {
+            RCLCPP_INFO(this->get_logger(), "  None! Full 100%% contiguous coverage certified.");
+        } else {
+            for (const auto &g : gaps) {
+                RCLCPP_INFO(
+                    this->get_logger(),
+                    "  [Gap %zu] s: %5.2fm -> %5.2fm | Len: %5.2fm | Seg %zu ('%s')",
+                    g.gap_id,
+                    g.start_s_m,
+                    g.end_s_m,
+                    g.length_m,
+                    g.segment_index + 1,
+                    g.segment_name.c_str()
+                );
+            }
+        }
+        RCLCPP_INFO(this->get_logger(), "----------------------------------------------------------------------");
+        RCLCPP_INFO(this->get_logger(), " SEGMENT COVERAGE BREAKDOWN:");
+        for (const auto &sc : breakdown) {
+            RCLCPP_INFO(
+                this->get_logger(),
+                "  #%-2zu '%-18s': %5.2fm | Inspected: %5.2fm | %5.1f %%",
+                sc.index + 1,
+                sc.name.c_str(),
+                sc.length_m,
+                sc.inspected_length_m,
+                sc.coverage_percent
+            );
+        }
+        RCLCPP_INFO(this->get_logger(), "======================================================================");
+        RCLCPP_INFO(this->get_logger(), " Detailed Survey Report Saved: %s", full_path.string().c_str());
+        RCLCPP_INFO(this->get_logger(), "======================================================================");
+
+        report_generated_ = true;
+        if (out_filepath) {
+            *out_filepath = std::filesystem::absolute(full_path).string();
+        }
+        return true;
+    }
+
+    /// @brief Target directory for generated survey reports.
+    std::string report_directory_{"reports"};
+
+    /// @brief Flag indicating whether a post-survey report has already been exported.
+    bool report_generated_{false};
+
+    /// @brief Subscription handle for mission completion notifications.
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr mission_complete_subscription_;
+
+    /// @brief Service server handle for on-demand report generation.
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr report_service_;
 
     /// @brief Path to mission YAML file containing pipeline route definition.
     std::string mission_file_;

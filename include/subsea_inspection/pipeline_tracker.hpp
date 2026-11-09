@@ -156,6 +156,45 @@ struct TrackingResult {
     bool is_inspected{false};
 };
 
+/// @brief Represents an uninspected gap section along the pipeline.
+struct InspectionGap {
+    /// @brief Sequential gap index number (1-based).
+    size_t gap_id{0};
+
+    /// @brief Starting cumulative arc-length position along the pipeline in meters.
+    double start_s_m{0.0};
+
+    /// @brief Ending cumulative arc-length position along the pipeline in meters.
+    double end_s_m{0.0};
+
+    /// @brief Total spatial length of the uninspected gap in meters.
+    double length_m{0.0};
+
+    /// @brief Index of the pipeline segment containing or nearest to the gap start.
+    size_t segment_index{0};
+
+    /// @brief Descriptive identifier of the pipeline segment containing the gap start.
+    std::string segment_name{};
+};
+
+/// @brief Inspection coverage analytics for an individual pipeline segment.
+struct SegmentCoverage {
+    /// @brief Index of the pipeline segment (0-based).
+    size_t index{0};
+
+    /// @brief Descriptive identifier of the segment.
+    std::string name{};
+
+    /// @brief Total length of the segment in meters.
+    double length_m{0.0};
+
+    /// @brief Inspected length of the segment in meters.
+    double inspected_length_m{0.0};
+
+    /// @brief Coverage percentage for this segment [0.0, 100.0].
+    double coverage_percent{0.0};
+};
+
 /// @brief Manages 3D pipeline geometry, orthogonal vehicle tracking, and inspection coverage.
 class PipelineTracker {
 public:
@@ -361,6 +400,135 @@ public:
     /// @return Vector of booleans indicating inspection status per bin.
     const std::vector<bool>& get_coverage_bins() const {
         return bins_;
+    }
+
+    /// @brief Finds the segment index and name containing a given cumulative arc-length.
+    /// @param s Cumulative arc-length in meters.
+    /// @return Pair of segment index and segment descriptive name.
+    std::pair<size_t, std::string> find_segment_for_arc_length(double s) const {
+        if (segments_.empty()) {
+            return {0, ""};
+        }
+        double accumulated = 0.0;
+        for (size_t i = 0; i < segments_.size(); ++i) {
+            accumulated += segments_[i].length;
+            if (s <= accumulated || i == segments_.size() - 1) {
+                return {i, segments_[i].name};
+            }
+        }
+        return {segments_.size() - 1, segments_.back().name};
+    }
+
+    /// @brief Extracts continuous uninspected gaps along the pipeline from the discrete coverage bins.
+    /// @param min_gap_length_m Minimum gap length in meters to qualify as a reported gap.
+    /// @return Ordered list of InspectionGap structs.
+    std::vector<InspectionGap> get_uninspected_gaps(double min_gap_length_m = 0.15) const {
+        std::vector<InspectionGap> gaps;
+        if (bins_.empty() || total_pipeline_length_ <= 0.0) {
+            return gaps;
+        }
+
+        size_t gap_count = 0;
+        bool in_gap = false;
+        size_t gap_start_bin = 0;
+
+        for (size_t i = 0; i < bins_.size(); ++i) {
+            if (!bins_[i]) {
+                if (!in_gap) {
+                    in_gap = true;
+                    gap_start_bin = i;
+                }
+            } else {
+                if (in_gap) {
+                    in_gap = false;
+                    double start_s = static_cast<double>(gap_start_bin) * bin_resolution_m_;
+                    double end_s = static_cast<double>(i) * bin_resolution_m_;
+                    end_s = std::min(end_s, total_pipeline_length_);
+                    double len = end_s - start_s;
+
+                    if (len >= min_gap_length_m) {
+                        gap_count++;
+                        InspectionGap gap;
+                        gap.gap_id = gap_count;
+                        gap.start_s_m = start_s;
+                        gap.end_s_m = end_s;
+                        gap.length_m = len;
+                        auto [seg_idx, seg_name] = find_segment_for_arc_length(start_s);
+                        gap.segment_index = seg_idx;
+                        gap.segment_name = seg_name;
+                        gaps.push_back(gap);
+                    }
+                }
+            }
+        }
+
+        // Handle trailing gap extending to end of pipe
+        if (in_gap) {
+            double start_s = static_cast<double>(gap_start_bin) * bin_resolution_m_;
+            double end_s = total_pipeline_length_;
+            double len = end_s - start_s;
+            if (len >= min_gap_length_m) {
+                gap_count++;
+                InspectionGap gap;
+                gap.gap_id = gap_count;
+                gap.start_s_m = start_s;
+                gap.end_s_m = end_s;
+                gap.length_m = len;
+                auto [seg_idx, seg_name] = find_segment_for_arc_length(start_s);
+                gap.segment_index = seg_idx;
+                gap.segment_name = seg_name;
+                gaps.push_back(gap);
+            }
+        }
+
+        return gaps;
+    }
+
+    /// @brief Computes coverage metrics broken down by individual pipeline segment.
+    /// @return Ordered list of SegmentCoverage structs for each registered segment.
+    std::vector<SegmentCoverage> get_segment_coverage_breakdown() const {
+        std::vector<SegmentCoverage> breakdown;
+        if (segments_.empty()) {
+            return breakdown;
+        }
+
+        double accumulated_s = 0.0;
+        for (size_t i = 0; i < segments_.size(); ++i) {
+            const auto &seg = segments_[i];
+            SegmentCoverage sc;
+            sc.index = i;
+            sc.name = seg.name;
+            sc.length_m = seg.length;
+
+            double seg_start_s = accumulated_s;
+            double seg_end_s = accumulated_s + seg.length;
+
+            if (seg.length > 1e-4 && !bins_.empty()) {
+                size_t start_bin = static_cast<size_t>(seg_start_s / bin_resolution_m_);
+                size_t end_bin = static_cast<size_t>(std::ceil(seg_end_s / bin_resolution_m_));
+                start_bin = std::min(start_bin, bins_.size());
+                end_bin = std::min(end_bin, bins_.size());
+
+                size_t seg_bins_total = (end_bin > start_bin) ? (end_bin - start_bin) : 0;
+                size_t seg_bins_inspected = 0;
+
+                for (size_t b = start_bin; b < end_bin; ++b) {
+                    if (bins_[b]) {
+                        seg_bins_inspected++;
+                    }
+                }
+
+                if (seg_bins_total > 0) {
+                    sc.coverage_percent = (static_cast<double>(seg_bins_inspected) / static_cast<double>(seg_bins_total)) * 100.0;
+                    sc.inspected_length_m = std::min(seg.length, static_cast<double>(seg_bins_inspected) * bin_resolution_m_);
+                }
+            }
+
+            breakdown.push_back(sc);
+            accumulated_s += seg.length;
+        }
+
+        return breakdown;
     }
 
 private:

@@ -161,3 +161,86 @@ TEST(PipelineTrackerTest, Point3DInteroperability) {
     EXPECT_DOUBLE_EQ(p3.y, 2.0);
     EXPECT_DOUBLE_EQ(p3.z, 3.0);
 }
+
+/// @brief Verifies clustering of uninspected bins into distinct gaps with along-track coordinates.
+TEST(PipelineTrackerTest, UninspectedGapsExtraction) {
+    PipelineTracker tracker(0.10);  // 10cm bins
+    // 10m straight segment
+    tracker.add_vertex("seg_a", PipePoint3D(0.0, 0.0, -2.8));
+    tracker.add_vertex("seg_b", PipePoint3D(10.0, 0.0, -2.8));
+
+    // Initially with 0 coverage, entire 10m is one single gap
+    auto initial_gaps = tracker.get_uninspected_gaps(0.15);
+    ASSERT_EQ(initial_gaps.size(), 1u);
+    EXPECT_NEAR(initial_gaps[0].start_s_m, 0.0, 1e-6);
+    EXPECT_NEAR(initial_gaps[0].end_s_m, 10.0, 1e-6);
+    EXPECT_NEAR(initial_gaps[0].length_m, 10.0, 1e-6);
+
+    // Inspect: [0.0m .. 3.0m] (valid)
+    for (double x = 0.05; x < 3.0; x += 0.08) {
+        tracker.track_pose(PipePoint3D(x, 0.0, -2.0), 0.0);
+    }
+    // Fly-over obstacle: [3.0m .. 6.0m] at Z = -1.0 (invalid standoff = 1.8m > 1.2m)
+    for (double x = 3.05; x < 6.0; x += 0.08) {
+        tracker.track_pose(PipePoint3D(x, 0.0, -1.0), 0.0);
+    }
+    // Resume inspection: [6.0m .. 8.0m] (valid)
+    for (double x = 6.05; x < 8.0; x += 0.08) {
+        tracker.track_pose(PipePoint3D(x, 0.0, -2.0), 0.0);
+    }
+    // Leave [8.0m .. 10.0m] uninspected
+
+    auto gaps = tracker.get_uninspected_gaps(0.15);
+    ASSERT_EQ(gaps.size(), 2u);
+
+    // Gap 1: obstacle fly-over region around 3.0m to 6.0m (length ~ 3.0m)
+    EXPECT_EQ(gaps[0].gap_id, 1u);
+    EXPECT_NEAR(gaps[0].start_s_m, 3.0, 0.15);
+    EXPECT_NEAR(gaps[0].end_s_m, 6.0, 0.15);
+    EXPECT_NEAR(gaps[0].length_m, 3.0, 0.20);
+
+    // Gap 2: tail region from 8.0m to 10.0m (length ~ 2.0m)
+    EXPECT_EQ(gaps[1].gap_id, 2u);
+    EXPECT_NEAR(gaps[1].start_s_m, 8.0, 0.15);
+    EXPECT_NEAR(gaps[1].end_s_m, 10.0, 0.15);
+    EXPECT_NEAR(gaps[1].length_m, 2.0, 0.20);
+}
+
+/// @brief Verifies calculation of coverage metrics per individual pipeline segment.
+TEST(PipelineTrackerTest, SegmentCoverageBreakdown) {
+    PipelineTracker tracker(0.10);
+    // Segment 1: 4m long
+    tracker.add_vertex("pipe_sec_1", PipePoint3D(0.0, 0.0, -2.8));
+    tracker.add_vertex("pipe_sec_2", PipePoint3D(4.0, 0.0, -2.8));
+    // Segment 2: 6m long
+    tracker.add_vertex("pipe_sec_3", PipePoint3D(10.0, 0.0, -2.8));
+
+    EXPECT_EQ(tracker.get_segment_count(), 2u);
+
+    // Fully inspect Segment 1 (0 to 4m)
+    for (double x = 0.05; x < 4.0; x += 0.08) {
+        tracker.track_pose(PipePoint3D(x, 0.0, -2.0), 0.0);
+    }
+
+    // Inspect half of Segment 2 (4m to 7m out of 4m to 10m)
+    for (double x = 4.05; x < 7.0; x += 0.08) {
+        tracker.track_pose(PipePoint3D(x, 0.0, -2.0), 0.0);
+    }
+
+    auto breakdown = tracker.get_segment_coverage_breakdown();
+    ASSERT_EQ(breakdown.size(), 2u);
+
+    // Segment 1: 100% coverage
+    EXPECT_EQ(breakdown[0].index, 0u);
+    EXPECT_EQ(breakdown[0].name, "pipe_sec_2");
+    EXPECT_NEAR(breakdown[0].length_m, 4.0, 1e-6);
+    EXPECT_NEAR(breakdown[0].inspected_length_m, 4.0, 0.10);
+    EXPECT_NEAR(breakdown[0].coverage_percent, 100.0, 1.0);
+
+    // Segment 2: ~50% coverage (3m of 6m)
+    EXPECT_EQ(breakdown[1].index, 1u);
+    EXPECT_EQ(breakdown[1].name, "pipe_sec_3");
+    EXPECT_NEAR(breakdown[1].length_m, 6.0, 1e-6);
+    EXPECT_NEAR(breakdown[1].inspected_length_m, 3.0, 0.15);
+    EXPECT_NEAR(breakdown[1].coverage_percent, 50.0, 3.0);
+}
