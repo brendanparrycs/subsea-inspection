@@ -203,8 +203,9 @@ private:
         double ux = (d_2d > 1e-3) ? (dx / d_2d) : 1.0;
         double uy = (d_2d > 1e-3) ? (dy / d_2d) : 0.0;
 
-        // Advance forward past the obstacle zone
-        double advance_dist = std::min(2.0, std::max(1.2, d_2d * 0.5));
+        // Advance forward past the detected obstacle with clearance margin
+        double obs_dist = std::max(0.8, static_cast<double>(obstacle_point.x));
+        double advance_dist = obs_dist + 1.2;
 
         if (avoidance_strategy_ == "lateral_bypass") {
             // Lateral bypass: move perpendicularly to the line of transit
@@ -475,6 +476,42 @@ private:
             case rclcpp_action::ResultCode::SUCCEEDED: {
                 if (state_ == MissionState::AVOIDING && is_detour_active_) {
                     is_detour_active_ = false;
+
+                    // If detour carried vehicle past current waypoint, advance to next downstream waypoint
+                    while (current_waypoint_index_ + 1 < waypoints_.size()) {
+                        const auto &curr_wp = waypoints_[current_waypoint_index_];
+                        const auto &next_wp = waypoints_[current_waypoint_index_ + 1];
+
+                        double seg_dx = next_wp.x - curr_wp.x;
+                        double seg_dy = next_wp.y - curr_wp.y;
+                        double seg_len = std::hypot(seg_dx, seg_dy);
+                        if (seg_len < 1e-3) {
+                            current_waypoint_index_++;
+                            continue;
+                        }
+
+                        // Projection of vector (current_pos - curr_wp) onto segment direction
+                        double to_rov_x = current_x_ - curr_wp.x;
+                        double to_rov_y = current_y_ - curr_wp.y;
+                        double projection = (to_rov_x * seg_dx + to_rov_y * seg_dy) / seg_len;
+
+                        double dist_to_curr = std::hypot(current_x_ - curr_wp.x, current_y_ - curr_wp.y);
+                        double dist_to_next = std::hypot(current_x_ - next_wp.x, current_y_ - next_wp.y);
+
+                        if (projection > 0.0 || dist_to_next < dist_to_curr) {
+                            RCLCPP_INFO(
+                                this->get_logger(),
+                                "[Route Resumption] Detour bypassed '%s'. Advancing to next waypoint '%s'.",
+                                curr_wp.name.c_str(),
+                                next_wp.name.c_str()
+                            );
+                            total_waypoints_completed_++;
+                            current_waypoint_index_++;
+                        } else {
+                            break;
+                        }
+                    }
+
                     RCLCPP_INFO(
                         this->get_logger(),
                         "=== Detour '%s' Reached! Obstacle safely bypassed. Resuming route to '%s' ===",

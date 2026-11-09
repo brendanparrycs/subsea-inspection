@@ -93,6 +93,18 @@ target_link_libraries(obstacle_detector
     visualization_msgs::visualization_msgs
 )
 
+# Build the inspection_tracker executable
+add_executable(inspection_tracker src/inspection_tracker.cpp)
+target_link_libraries(inspection_tracker
+    rclcpp::rclcpp
+    nav_msgs::nav_msgs
+    geometry_msgs::geometry_msgs
+    visualization_msgs::visualization_msgs
+    tf2::tf2
+    tf2_geometry_msgs::tf2_geometry_msgs
+    yaml-cpp
+)
+
 # Install executables to lib/subsea_inspection
 install(TARGETS
     robot_state_monitor
@@ -102,6 +114,7 @@ install(TARGETS
     waypoint_navigator
     mission_planner
     obstacle_detector
+    inspection_tracker
     DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -117,6 +130,12 @@ install(DIRECTORY
     models
     DESTINATION share/${PROJECT_NAME}
     OPTIONAL
+)
+
+# Install procedural scenario generator scripts
+install(PROGRAMS
+    scripts/generate_pipeline_scenario.py
+    DESTINATION lib/${PROJECT_NAME}
 )
 
 # Automated testing
@@ -135,6 +154,10 @@ if(BUILD_TESTING)
     # Unit test for PointCloudFilter
     ament_add_gtest(test_point_cloud_filter test/test_point_cloud_filter.cpp)
     target_include_directories(test_point_cloud_filter PRIVATE include)
+
+    # Unit test for PipelineTracker
+    ament_add_gtest(test_pipeline_tracker test/test_pipeline_tracker.cpp)
+    target_include_directories(test_pipeline_tracker PRIVATE include)
 endif()
 
 ament_package()

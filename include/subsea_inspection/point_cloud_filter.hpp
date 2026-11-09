@@ -35,7 +35,7 @@ struct RoiBoundingBox {
     double max_x{3.00};  // Forward detection horizon
     double min_y{-0.45}; // Starboard safety corridor boundary
     double max_y{0.45};  // Port safety corridor boundary
-    double min_z{-0.30}; // Bottom safety corridor boundary
+    double min_z{-0.20}; // Bottom safety corridor boundary
     double max_z{0.30};  // Top safety corridor boundary
 
     /// @brief Tests if a given 3D point lies strictly within the bounding box.

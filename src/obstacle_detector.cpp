@@ -32,7 +32,7 @@ public:
         this->declare_parameter<double>("max_x", 3.00);
         this->declare_parameter<double>("min_y", -0.45);
         this->declare_parameter<double>("max_y", 0.45);
-        this->declare_parameter<double>("min_z", -0.30);
+        this->declare_parameter<double>("min_z", -0.20);
         this->declare_parameter<double>("max_z", 0.30);
 
         point_cloud_topic_ = this->get_parameter("point_cloud_topic").as_string();

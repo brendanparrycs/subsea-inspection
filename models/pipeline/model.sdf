@@ -1,0 +1,256 @@
+<?xml version="1.0"?>
+<sdf version="1.8">
+  <model name="subsea_pipeline">
+    <static>true</static>
+    <!-- Pipeline Segment 1 -->
+    <link name="segment_1">
+      <pose>4.959 0.000 -2.872 0.0000 1.5953 0.0000</pose>
+      <collision name="col">
+        <geometry>
+          <cylinder><radius>0.250</radius><length>5.920</length></cylinder>
+        </geometry>
+      </collision>
+      <visual name="vis">
+        <geometry>
+          <cylinder><radius>0.250</radius><length>5.920</length></cylinder>
+        </geometry>
+        <material>
+          <ambient>0.85 0.65 0.10 1.0</ambient>
+          <diffuse>0.85 0.65 0.10 1.0</diffuse>
+          <specular>0.3 0.3 0.3 1.0</specular>
+        </material>
+      </visual>
+    </link>
+    <!-- Pipeline Segment 2 -->
+    <link name="segment_2">
+      <pose>10.208 -0.456 -2.946 0.0000 1.5714 -0.1963</pose>
+      <collision name="col">
+        <geometry>
+          <cylinder><radius>0.250</radius><length>4.670</length></cylinder>
+        </geometry>
+      </collision>
+      <visual name="vis">
+        <geometry>
+          <cylinder><radius>0.250</radius><length>4.670</length></cylinder>
+        </geometry>
+        <material>
+          <ambient>0.85 0.65 0.10 1.0</ambient>
+          <diffuse>0.85 0.65 0.10 1.0</diffuse>
+          <specular>0.3 0.3 0.3 1.0</specular>
+        </material>
+      </visual>
+    </link>
+    <!-- Pipeline Segment 3 -->
+    <link name="segment_3">
+      <pose>15.834 -1.051 -3.014 0.0000 1.5906 -0.0421</pose>
+      <collision name="col">
+        <geometry>
+          <cylinder><radius>0.250</radius><length>6.678</length></cylinder>
+        </geometry>
+      </collision>
+      <visual name="vis">
+        <geometry>
+          <cylinder><radius>0.250</radius><length>6.678</length></cylinder>
+        </geometry>
+        <material>
+          <ambient>0.85 0.65 0.10 1.0</ambient>
+          <diffuse>0.85 0.65 0.10 1.0</diffuse>
+          <specular>0.3 0.3 0.3 1.0</specular>
+        </material>
+      </visual>
+    </link>
+    <!-- Pipeline Segment 4 -->
+    <link name="segment_4">
+      <pose>21.201 -1.417 -3.133 0.0000 1.5970 -0.1103</pose>
+      <collision name="col">
+        <geometry>
+          <cylinder><radius>0.250</radius><length>4.090</length></cylinder>
+        </geometry>
+      </collision>
+      <visual name="vis">
+        <geometry>
+          <cylinder><radius>0.250</radius><length>4.090</length></cylinder>
+        </geometry>
+        <material>
+          <ambient>0.85 0.65 0.10 1.0</ambient>
+          <diffuse>0.85 0.65 0.10 1.0</diffuse>
+          <specular>0.3 0.3 0.3 1.0</specular>
+        </material>
+      </visual>
+    </link>
+    <!-- Joint Flange 1 -->
+    <link name="flange_1">
+      <pose>2.000 0.000 -2.800 0 0 0</pose>
+      <collision name="col">
+        <geometry>
+          <sphere><radius>0.287</radius></sphere>
+        </geometry>
+      </collision>
+      <visual name="vis">
+        <geometry>
+          <sphere><radius>0.287</radius></sphere>
+        </geometry>
+        <material>
+          <ambient>0.25 0.28 0.32 1.0</ambient>
+          <diffuse>0.30 0.35 0.40 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+    <!-- Concrete Support Saddle 1 -->
+    <link name="support_1">
+      <pose>2.000 0.000 -3.150 0 0 0</pose>
+      <collision name="col">
+        <geometry><box><size>0.6 0.6 0.2</size></box></geometry>
+      </collision>
+      <visual name="vis">
+        <geometry><box><size>0.6 0.6 0.2</size></box></geometry>
+        <material>
+          <ambient>0.45 0.45 0.45 1.0</ambient>
+          <diffuse>0.50 0.50 0.50 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+    <!-- Joint Flange 2 -->
+    <link name="flange_2">
+      <pose>7.918 0.000 -2.945 0 0 0</pose>
+      <collision name="col">
+        <geometry>
+          <sphere><radius>0.287</radius></sphere>
+        </geometry>
+      </collision>
+      <visual name="vis">
+        <geometry>
+          <sphere><radius>0.287</radius></sphere>
+        </geometry>
+        <material>
+          <ambient>0.25 0.28 0.32 1.0</ambient>
+          <diffuse>0.30 0.35 0.40 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+    <!-- Concrete Support Saddle 2 -->
+    <link name="support_2">
+      <pose>7.918 0.000 -3.295 0 0 0</pose>
+      <collision name="col">
+        <geometry><box><size>0.6 0.6 0.2</size></box></geometry>
+      </collision>
+      <visual name="vis">
+        <geometry><box><size>0.6 0.6 0.2</size></box></geometry>
+        <material>
+          <ambient>0.45 0.45 0.45 1.0</ambient>
+          <diffuse>0.50 0.50 0.50 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+    <!-- Joint Flange 3 -->
+    <link name="flange_3">
+      <pose>12.498 -0.911 -2.948 0 0 0</pose>
+      <collision name="col">
+        <geometry>
+          <sphere><radius>0.287</radius></sphere>
+        </geometry>
+      </collision>
+      <visual name="vis">
+        <geometry>
+          <sphere><radius>0.287</radius></sphere>
+        </geometry>
+        <material>
+          <ambient>0.25 0.28 0.32 1.0</ambient>
+          <diffuse>0.30 0.35 0.40 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+    <!-- Concrete Support Saddle 3 -->
+    <link name="support_3">
+      <pose>12.498 -0.911 -3.298 0 0 0</pose>
+      <collision name="col">
+        <geometry><box><size>0.6 0.6 0.2</size></box></geometry>
+      </collision>
+      <visual name="vis">
+        <geometry><box><size>0.6 0.6 0.2</size></box></geometry>
+        <material>
+          <ambient>0.45 0.45 0.45 1.0</ambient>
+          <diffuse>0.50 0.50 0.50 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+    <!-- Joint Flange 4 -->
+    <link name="flange_4">
+      <pose>19.169 -1.192 -3.080 0 0 0</pose>
+      <collision name="col">
+        <geometry>
+          <sphere><radius>0.287</radius></sphere>
+        </geometry>
+      </collision>
+      <visual name="vis">
+        <geometry>
+          <sphere><radius>0.287</radius></sphere>
+        </geometry>
+        <material>
+          <ambient>0.25 0.28 0.32 1.0</ambient>
+          <diffuse>0.30 0.35 0.40 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+    <!-- Concrete Support Saddle 4 -->
+    <link name="support_4">
+      <pose>19.169 -1.192 -3.430 0 0 0</pose>
+      <collision name="col">
+        <geometry><box><size>0.6 0.6 0.2</size></box></geometry>
+      </collision>
+      <visual name="vis">
+        <geometry><box><size>0.6 0.6 0.2</size></box></geometry>
+        <material>
+          <ambient>0.45 0.45 0.45 1.0</ambient>
+          <diffuse>0.50 0.50 0.50 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+    <!-- Joint Flange 5 -->
+    <link name="flange_5">
+      <pose>23.233 -1.642 -3.187 0 0 0</pose>
+      <collision name="col">
+        <geometry>
+          <sphere><radius>0.287</radius></sphere>
+        </geometry>
+      </collision>
+      <visual name="vis">
+        <geometry>
+          <sphere><radius>0.287</radius></sphere>
+        </geometry>
+        <material>
+          <ambient>0.25 0.28 0.32 1.0</ambient>
+          <diffuse>0.30 0.35 0.40 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+    <!-- Concrete Support Saddle 5 -->
+    <link name="support_5">
+      <pose>23.233 -1.642 -3.537 0 0 0</pose>
+      <collision name="col">
+        <geometry><box><size>0.6 0.6 0.2</size></box></geometry>
+      </collision>
+      <visual name="vis">
+        <geometry><box><size>0.6 0.6 0.2</size></box></geometry>
+        <material>
+          <ambient>0.45 0.45 0.45 1.0</ambient>
+          <diffuse>0.50 0.50 0.50 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+    <!-- Obstacle: pipeline_obstacle_1 -->
+    <link name="pipeline_obstacle_1">
+      <pose>5.104 -0.015 -2.361 0 0 0</pose>
+      <collision name="col">
+        <geometry><box><size>0.56 0.56 0.53</size></box></geometry>
+      </collision>
+      <visual name="vis">
+        <geometry><box><size>0.56 0.56 0.53</size></box></geometry>
+        <material>
+          <ambient>0.90 0.15 0.15 1.0</ambient>
+          <diffuse>0.90 0.15 0.15 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>

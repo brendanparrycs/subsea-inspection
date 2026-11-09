@@ -1,0 +1,392 @@
+#ifndef SUBSEA_INSPECTION_PIPELINE_TRACKER_HPP_
+#define SUBSEA_INSPECTION_PIPELINE_TRACKER_HPP_
+
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <limits>
+#include <string>
+#include <vector>
+
+#include "subsea_inspection/geometry_utils.hpp"
+#include "subsea_inspection/point_cloud_filter.hpp"
+
+namespace subsea_inspection {
+
+/// @brief Represents a 3D coordinate point or spatial vector.
+struct PipePoint3D {
+    /// @brief X coordinate in meters.
+    double x{0.0};
+
+    /// @brief Y coordinate in meters.
+    double y{0.0};
+
+    /// @brief Z coordinate in meters.
+    double z{0.0};
+
+    PipePoint3D() = default;
+    PipePoint3D(double px, double py, double pz): x(px), y(py), z(pz) {}
+
+    /// @brief Implicit converting constructor from Point3D for stack-wide interoperability.
+    /// @param pt Spatial 3D point.
+    PipePoint3D(const Point3D &pt): x(pt.x), y(pt.y), z(pt.z) {}
+
+    /// @brief Implicit conversion operator to Point3D.
+    operator Point3D() const {
+        return Point3D(x, y, z);
+    }
+
+    /// @brief Computes 3D Euclidean distance to another point.
+    /// @param other Destination point.
+    /// @return Spatial distance in meters.
+    double distance_to(const PipePoint3D &other) const {
+        double dx = other.x - x;
+        double dy = other.y - y;
+        double dz = other.z - z;
+        return std::sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    /// @brief Checks if point coordinates are valid finite numbers.
+    /// @return True if x, y, and z are finite.
+    bool is_valid() const {
+        return std::isfinite(x) && std::isfinite(y) && std::isfinite(z);
+    }
+};
+
+/// @brief A linear cylindrical pipeline segment connecting two 3D vertices on the seabed.
+struct PipelineSegment {
+    /// @brief Unique descriptive identifier for the segment.
+    std::string name{};
+
+    /// @brief Starting 3D vertex coordinates on pipe centerline.
+    PipePoint3D start{};
+
+    /// @brief Ending 3D vertex coordinates on pipe centerline.
+    PipePoint3D end{};
+
+    /// @brief Outer radius of the cylindrical pipeline in meters.
+    double radius{0.25};
+
+    /// @brief 3D Euclidean length of the segment in meters.
+    double length{0.0};
+
+    /// @brief Tangent direction heading of the segment in radians [-PI, +PI].
+    double heading_rad{0.0};
+
+    PipelineSegment() = default;
+
+    /// @brief Constructs a pipeline segment connecting start and end vertices.
+    /// @param seg_name Unique descriptive identifier for the segment.
+    /// @param p1 Starting 3D vertex coordinates on pipe centerline.
+    /// @param p2 Ending 3D vertex coordinates on pipe centerline.
+    /// @param r Outer radius of the pipe cylinder in meters.
+    PipelineSegment(
+        const std::string &seg_name,
+        const PipePoint3D &p1,
+        const PipePoint3D &p2,
+        double r = 0.25
+    ):
+        name(seg_name),
+        start(p1),
+        end(p2),
+        radius(r)
+    {
+        double dx = end.x - start.x;
+        double dy = end.y - start.y;
+        double dz = end.z - start.z;
+        length = std::sqrt(dx * dx + dy * dy + dz * dz);
+        heading_rad = (length > 1e-4) ? std::atan2(dy, dx) : 0.0;
+    }
+};
+
+/// @brief Sensor envelope criteria for qualifying valid subsea inspection coverage.
+struct InspectionCriteria {
+    /// @brief Minimum allowable vertical standoff clearance above the pipe centerline in meters.
+    double min_standoff_m{0.50};
+
+    /// @brief Maximum allowable vertical standoff clearance above the pipe centerline in meters.
+    double max_standoff_m{1.20};
+
+    /// @brief Maximum allowable lateral horizontal deviation from the pipe centerline in meters.
+    double max_cross_track_m{0.40};
+
+    /// @brief Maximum allowable heading angular deviation relative to the pipe segment tangent in degrees.
+    double max_heading_error_deg{30.0};
+};
+
+/// @brief Instantaneous tracking metrics and inspection qualification result.
+struct TrackingResult {
+    /// @brief Index of the nearest active pipeline segment in the pipeline model.
+    size_t active_segment_index{0};
+
+    /// @brief Identifier of the nearest active pipeline segment.
+    std::string active_segment_name{};
+
+    /// @brief Orthogonal projection point on the active pipe centerline closest to the vehicle.
+    PipePoint3D projected_point{};
+
+    /// @brief Scalar arc-length distance along the active segment measured from segment start in meters.
+    double arc_length_on_segment_m{0.0};
+
+    /// @brief Cumulative arc-length distance along the entire pipeline measured from pipeline origin in meters.
+    double total_arc_length_m{0.0};
+
+    /// @brief Horizontal lateral cross-track deviation perpendicular to the pipe centerline in meters.
+    double cross_track_error_m{0.0};
+
+    /// @brief Vertical standoff clearance above the pipe centerline (ROV Z minus pipe Z) in meters.
+    double standoff_altitude_m{0.0};
+
+    /// @brief True 3D Euclidean spatial distance from the vehicle position to the pipe centerline in meters.
+    double spatial_distance_m{0.0};
+
+    /// @brief Absolute angular deviation between vehicle yaw heading and pipe tangent heading in degrees.
+    double heading_error_deg{0.0};
+
+    /// @brief True if vertical standoff altitude satisfies the inspection criteria envelope.
+    bool is_standoff_valid{false};
+
+    /// @brief True if lateral cross-track error is within the maximum allowable threshold.
+    bool is_cross_track_valid{false};
+
+    /// @brief True if vehicle yaw heading is aligned within the maximum allowable heading tolerance.
+    bool is_heading_valid{false};
+
+    /// @brief True if standoff, cross-track, and heading criteria are all simultaneously satisfied.
+    bool is_inspected{false};
+};
+
+/// @brief Manages 3D pipeline geometry, orthogonal vehicle tracking, and inspection coverage.
+class PipelineTracker {
+public:
+    /// @brief Constructs a pipeline tracker with a specified spatial bin resolution.
+    /// @param bin_resolution_m Discretization arc-length resolution in meters for coverage tracking.
+    explicit PipelineTracker(double bin_resolution_m = 0.10):
+        bin_resolution_m_(bin_resolution_m),
+        total_pipeline_length_(0.0) {}
+
+    /// @brief Registers a new linear pipeline segment.
+    /// @param segment Pipeline segment with start, end, and radius.
+    void add_segment(const PipelineSegment &segment) {
+        segments_.push_back(segment);
+        total_pipeline_length_ += segment.length;
+        rebuild_bins();
+    }
+
+    /// @brief Adds a new vertex, automatically connecting it to the previous vertex.
+    /// @param vertex_name Unique identifier for the segment.
+    /// @param pt 3D coordinates of the new pipeline vertex.
+    /// @param radius Pipe radius in meters.
+    void add_vertex(const std::string &vertex_name, const PipePoint3D &pt, double radius = 0.25) {
+        if (!vertices_.empty()) {
+            PipelineSegment seg(vertex_name, vertices_.back(), pt, radius);
+            add_segment(seg);
+        }
+        vertices_.push_back(pt);
+    }
+
+    /// @brief Clears all pipeline segments, vertices, and accumulated coverage data.
+    void clear() {
+        vertices_.clear();
+        segments_.clear();
+        total_pipeline_length_ = 0.0;
+        bins_.clear();
+    }
+
+    /// @brief Resets all coverage inspection bins to uninspected.
+    void reset_coverage() {
+        std::fill(bins_.begin(), bins_.end(), false);
+    }
+
+    /// @brief Evaluates vehicle spatial pose against the pipeline geometry.
+    /// @param rov_pos Current 3D position of the ROV in world coordinates.
+    /// @param rov_yaw_rad Current heading of the ROV in radians [-PI, +PI].
+    /// @param criteria Quality threshold envelope for inspection qualification.
+    /// @return TrackingResult containing orthogonal projection, error metrics, and qualification flags.
+    TrackingResult track_pose(
+        const PipePoint3D &rov_pos,
+        double rov_yaw_rad,
+        const InspectionCriteria &criteria = InspectionCriteria()
+    ) {
+        TrackingResult result;
+        if (segments_.empty()) {
+            return result;
+        }
+
+        double best_dist_sq = std::numeric_limits<double>::infinity();
+        size_t best_idx = 0;
+        PipePoint3D best_proj;
+        double best_s = 0.0;
+        double accumulated_len = 0.0;
+        double best_accumulated_start = 0.0;
+
+        for (size_t i = 0; i < segments_.size(); ++i) {
+            const auto &seg = segments_[i];
+            if (seg.length <= 1e-4) {
+                accumulated_len += seg.length;
+                continue;
+            }
+
+            double dx = seg.end.x - seg.start.x;
+            double dy = seg.end.y - seg.start.y;
+            double dz = seg.end.z - seg.start.z;
+
+            // Unit tangent along segment
+            double tx = dx / seg.length;
+            double ty = dy / seg.length;
+            double tz = dz / seg.length;
+
+            // Vector from start vertex to ROV position
+            double to_rov_x = rov_pos.x - seg.start.x;
+            double to_rov_y = rov_pos.y - seg.start.y;
+            double to_rov_z = rov_pos.z - seg.start.z;
+
+            // Scalar dot product projection
+            double s = to_rov_x * tx + to_rov_y * ty + to_rov_z * tz;
+            double s_clamped = std::clamp(s, 0.0, seg.length);
+
+            PipePoint3D proj(
+                seg.start.x + s_clamped * tx,
+                seg.start.y + s_clamped * ty,
+                seg.start.z + s_clamped * tz
+            );
+
+            double d_sq = (rov_pos.x - proj.x) * (rov_pos.x - proj.x) +
+                          (rov_pos.y - proj.y) * (rov_pos.y - proj.y) +
+                          (rov_pos.z - proj.z) * (rov_pos.z - proj.z);
+
+            if (d_sq < best_dist_sq) {
+                best_dist_sq = d_sq;
+                best_idx = i;
+                best_proj = proj;
+                best_s = s_clamped;
+                best_accumulated_start = accumulated_len;
+            }
+
+            accumulated_len += seg.length;
+        }
+
+        const auto &active_seg = segments_[best_idx];
+        result.active_segment_index = best_idx;
+        result.active_segment_name = active_seg.name;
+        result.projected_point = best_proj;
+        result.arc_length_on_segment_m = best_s;
+        result.total_arc_length_m = best_accumulated_start + best_s;
+
+        // Horizontal lateral cross-track error
+        double dx_lat = rov_pos.x - best_proj.x;
+        double dy_lat = rov_pos.y - best_proj.y;
+        result.cross_track_error_m = std::hypot(dx_lat, dy_lat);
+
+        // Vertical standoff altitude (ROV z - pipe z)
+        result.standoff_altitude_m = rov_pos.z - best_proj.z;
+
+        // 3D spatial Euclidean distance
+        result.spatial_distance_m = std::sqrt(best_dist_sq);
+
+        // Heading deviation wrapped to [-PI, +PI]
+        double yaw_diff = rov_yaw_rad - active_seg.heading_rad;
+        yaw_diff = geometry::wrap_angle(yaw_diff);
+        result.heading_error_deg = std::abs(yaw_diff) * (180.0 / M_PI);
+
+        // Multi-criteria inspection qualification
+        result.is_standoff_valid = (result.standoff_altitude_m >= criteria.min_standoff_m) &&
+                                   (result.standoff_altitude_m <= criteria.max_standoff_m);
+        result.is_cross_track_valid = (result.cross_track_error_m <= criteria.max_cross_track_m);
+        result.is_heading_valid = (result.heading_error_deg <= criteria.max_heading_error_deg);
+
+        result.is_inspected = result.is_standoff_valid &&
+                              result.is_cross_track_valid &&
+                              result.is_heading_valid;
+
+        // Mark discrete coverage bin if criteria are met
+        if (result.is_inspected && !bins_.empty()) {
+            size_t bin_idx = static_cast<size_t>(result.total_arc_length_m / bin_resolution_m_);
+            if (bin_idx < bins_.size()) {
+                bins_[bin_idx] = true;
+            }
+        }
+
+        return result;
+    }
+
+    /// @brief Computes overall percentage of the pipeline successfully inspected.
+    /// @return Percentage of pipeline length certified [0.0, 100.0].
+    double get_coverage_percentage() const {
+        if (bins_.empty()) return 0.0;
+        size_t inspected_count = 0;
+        for (bool b : bins_) {
+            if (b) inspected_count++;
+        }
+        return (static_cast<double>(inspected_count) / static_cast<double>(bins_.size())) * 100.0;
+    }
+
+    /// @brief Computes cumulative inspected pipeline length in meters.
+    /// @return Length of inspected pipeline sections in meters.
+    double get_inspected_length_m() const {
+        if (bins_.empty() || total_pipeline_length_ <= 0.0) return 0.0;
+        size_t inspected_count = 0;
+        for (bool b : bins_) {
+            if (b) inspected_count++;
+        }
+        double inspected = static_cast<double>(inspected_count) * bin_resolution_m_;
+        return std::min(total_pipeline_length_, inspected);
+    }
+
+    /// @brief Gets total cumulative length of all registered pipeline segments.
+    /// @return Total pipeline length in meters.
+    double get_total_pipeline_length_m() const {
+        return total_pipeline_length_;
+    }
+
+    /// @brief Gets the number of registered pipeline segments.
+    /// @return Total segment count.
+    size_t get_segment_count() const {
+        return segments_.size();
+    }
+
+    /// @brief Gets the spatial discretization bin resolution.
+    /// @return Resolution in meters.
+    double get_bin_resolution_m() const {
+        return bin_resolution_m_;
+    }
+
+    /// @brief Returns read-only reference to all registered pipeline segments.
+    /// @return Vector of PipelineSegment structs.
+    const std::vector<PipelineSegment>& get_segments() const {
+        return segments_;
+    }
+
+    /// @brief Returns read-only reference to discretized coverage bins.
+    /// @return Vector of booleans indicating inspection status per bin.
+    const std::vector<bool>& get_coverage_bins() const {
+        return bins_;
+    }
+
+private:
+    /// @brief Rebuilds the discrete coverage bin array when segments are added or modified.
+    void rebuild_bins() {
+        if (bin_resolution_m_ <= 0.0 || total_pipeline_length_ <= 0.0) return;
+        size_t num_bins = static_cast<size_t>(std::ceil(total_pipeline_length_ / bin_resolution_m_));
+        bins_.assign(num_bins, false);
+    }
+
+    /// @brief Spatial arc-length resolution in meters per discretized coverage cell.
+    double bin_resolution_m_{0.10};
+
+    /// @brief Total cumulative 3D length of all registered pipeline segments in meters.
+    double total_pipeline_length_{0.0};
+
+    /// @brief Ordered sequence of 3D vertices defining the pipeline path.
+    std::vector<PipePoint3D> vertices_{};
+
+    /// @brief Ordered array of linear cylindrical pipeline segments.
+    std::vector<PipelineSegment> segments_{};
+
+    /// @brief Discretized boolean grid representing inspection coverage per resolution cell.
+    std::vector<bool> bins_{};
+};
+
+} // namespace subsea_inspection
+
+#endif // SUBSEA_INSPECTION_PIPELINE_TRACKER_HPP_

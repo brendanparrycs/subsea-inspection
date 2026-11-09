@@ -1,29 +1,71 @@
 mission:
-  name: "pipeline_inspection_alpha"
-  default_acceptance_radius: 1.0 # meters
+  name: "procedural_pipeline_inspection_42"
+  default_acceptance_radius: 0.40
   default_speed: 0.5
-  timeout_per_waypoint_sec: 45.0 # seconds before aborting if stuck
+  timeout_per_waypoint_sec: 45.0
   waypoints:
     - name: "pipe_entry"
-      x: 3.0
-      y: 0.0
-      z: -2.0
-      dwell_sec: 2.0 # Pause for 2s to simulate camera/sonar reading
-    
-    - name: "mid_pipe_checkpoint"
-      x: 7.0
-      y: 1.0
-      z: -2.0
-      dwell_sec: 1.0
-
-    - name: "deep_section_entry"
-      x: 11.0
-      y: 1.0
-      z: -3.0
+      x: 2.00
+      y: 0.00
+      z: -2.00
       dwell_sec: 2.0
 
-    - name: "survey_station"
-      x: 11.0
-      y: -1.0
-      z: -3.0
-      dwell_sec: 3.0
+    - name: "track_1"
+      x: 3.97
+      y: 0.00
+      z: -2.05
+      dwell_sec: 0.0
+
+    - name: "track_2"
+      x: 5.95
+      y: 0.00
+      z: -2.10
+      dwell_sec: 0.0
+
+    - name: "track_3"
+      x: 7.92
+      y: 0.00
+      z: -2.14
+      dwell_sec: 0.0
+
+    - name: "track_4"
+      x: 10.21
+      y: -0.46
+      z: -2.15
+      dwell_sec: 0.0
+
+    - name: "track_5"
+      x: 12.50
+      y: -0.91
+      z: -2.15
+      dwell_sec: 0.0
+
+    - name: "track_6"
+      x: 14.72
+      y: -1.00
+      z: -2.19
+      dwell_sec: 0.0
+
+    - name: "track_7"
+      x: 16.95
+      y: -1.10
+      z: -2.24
+      dwell_sec: 0.0
+
+    - name: "track_8"
+      x: 19.17
+      y: -1.19
+      z: -2.28
+      dwell_sec: 0.0
+
+    - name: "track_9"
+      x: 21.20
+      y: -1.42
+      z: -2.33
+      dwell_sec: 0.0
+
+    - name: "survey_terminus"
+      x: 23.23
+      y: -1.64
+      z: -2.39
+      dwell_sec: 2.0

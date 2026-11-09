@@ -60,6 +60,13 @@ def generate_launch_description():
         description="Vertical heave clearance in meters for fly-over avoidance"
     )
 
+    spawn_pipeline_arg = DeclareLaunchArgument(
+        "spawn_pipeline",
+        default_value="true",
+        description="Whether to spawn the 3D subsea pipeline model on the seabed",
+        choices=["true", "false"]
+    )
+
     spawn_obstacle_arg = DeclareLaunchArgument(
         "spawn_obstacle",
         default_value="false",
@@ -90,6 +97,7 @@ def generate_launch_description():
     mission_file_choice = LaunchConfiguration("mission_file")
     avoidance_strategy_choice = LaunchConfiguration("avoidance_strategy")
     avoidance_heave_clearance_choice = LaunchConfiguration("avoidance_heave_clearance")
+    spawn_pipeline_choice = LaunchConfiguration("spawn_pipeline")
     spawn_obstacle_choice = LaunchConfiguration("spawn_obstacle")
     obstacle_x_choice = LaunchConfiguration("obstacle_x")
     obstacle_y_choice = LaunchConfiguration("obstacle_y")
@@ -146,6 +154,27 @@ def generate_launch_description():
         output="screen",
         parameters=[{"use_sim_time": True}],
         condition=IfCondition(start_sim_choice)
+    )
+
+    # 3b. Spawn procedural 3D subsea pipeline model on the seabed
+    pipeline_sdf_path = PathJoinSubstitution([
+        FindPackageShare("subsea_inspection"),
+        "models",
+        "pipeline",
+        "model.sdf"
+    ])
+
+    pipeline_spawner_node = Node(
+        package="ros_gz_sim",
+        executable="create",
+        name="pipeline_spawner",
+        arguments=[
+            "-world", "oceans_waves",
+            "-name", "subsea_pipeline",
+            "-file", pipeline_sdf_path
+        ],
+        output="screen",
+        condition=IfCondition(spawn_pipeline_choice)
     )
 
     # 4. Include POSIM BlueROV2 Heavy robot configuration (ArduSub SITL, MAVROS, and telemetry bridge)
@@ -284,18 +313,37 @@ def generate_launch_description():
         condition=IfCondition(spawn_obstacle_choice)
     )
 
+    # 11. Pipeline inspection tracker & real-time coverage monitor
+    inspection_tracker_node = Node(
+        package="subsea_inspection",
+        executable="inspection_tracker",
+        name="inspection_tracker",
+        output="screen",
+        parameters=[{
+            "use_sim_time": True,
+            "mission_file": mission_file_choice,
+            "standoff_height": 0.80,
+            "min_standoff": 0.50,
+            "max_standoff": 1.20,
+            "max_cross_track": 0.40,
+            "max_heading_error_deg": 30.0,
+        }]
+    )
+
     return LaunchDescription([
         start_sim_arg,
         gui_arg,
         mission_file_arg,
         avoidance_strategy_arg,
         avoidance_heave_clearance_arg,
+        spawn_pipeline_arg,
         spawn_obstacle_arg,
         obstacle_x_arg,
         obstacle_y_arg,
         obstacle_z_arg,
         gz_sim,
         gz_spawner,
+        pipeline_spawner_node,
         spawn_event_handler,
         point_cloud_bridge,
         depth_camera_tf_node,
@@ -304,5 +352,6 @@ def generate_launch_description():
         obstacle_detector_node,
         waypoint_navigator_node,
         mission_planner_node,
+        inspection_tracker_node,
         obstacle_spawner_node,
     ])

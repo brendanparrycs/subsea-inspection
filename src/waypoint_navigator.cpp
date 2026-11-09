@@ -41,7 +41,7 @@ public:
         this->declare_parameter<double>("acceptance_radius", 1.0);
 
         // Control gating parameters
-        this->declare_parameter<double>("heading_tolerance_deg", 45.0);
+        this->declare_parameter<double>("heading_tolerance_deg", 20.0);
 
         // Surge PID parameters
         this->declare_parameter<double>("surge_kp", 0.5);
@@ -50,15 +50,15 @@ public:
         this->declare_parameter<double>("surge_max_speed", 0.6);
 
         // Heave PID parameters
-        this->declare_parameter<double>("heave_kp", 0.6);
-        this->declare_parameter<double>("heave_ki", 0.15);
-        this->declare_parameter<double>("heave_kd", 0.1);
+        this->declare_parameter<double>("heave_kp", 0.8);
+        this->declare_parameter<double>("heave_ki", 0.01);
+        this->declare_parameter<double>("heave_kd", 0.25);
         this->declare_parameter<double>("heave_max_speed", 0.6);
 
         // Yaw PID parameters
-        this->declare_parameter<double>("yaw_kp", 1.0);
+        this->declare_parameter<double>("yaw_kp", 1.6);
         this->declare_parameter<double>("yaw_ki", 0.01);
-        this->declare_parameter<double>("yaw_kd", 0.2);
+        this->declare_parameter<double>("yaw_kd", 0.25);
         this->declare_parameter<double>("yaw_max_speed", 0.6);
 
         load_parameters();
@@ -305,12 +305,13 @@ private:
         double cmd_heave = heave_pid_.compute(dz, dt);
 
         // 3. Forward Surge Guidance (with Turn-Before-Drive gating)
-        // When close to waypoint (<1.5m), tighten tolerance to 25 deg to prevent orbiting
-        double effective_tolerance = (dist_2d < 1.5) ? (25.0 * M_PI / 180.0) : heading_tolerance_rad_;
+        // Tighten tolerance on waypoint approach to prevent orbiting while allowing smooth capture
+        double effective_tolerance = (dist_2d < 0.6) ? (20.0 * M_PI / 180.0) : heading_tolerance_rad_;
         double cmd_surge = 0.0;
         if (std::abs(yaw_error) < effective_tolerance) {
-            // Smoothly scale speed as heading error drops to zero
-            double alignment_factor = std::max(0.0, std::cos(yaw_error));
+            // Smoothly scale speed as heading error drops to zero (cos^2 for stronger suppression on slight misalignments)
+            double cos_err = std::max(0.0, std::cos(yaw_error));
+            double alignment_factor = cos_err * cos_err;
             cmd_surge = surge_pid_.compute(dist_2d, dt) * alignment_factor;
         }
 
