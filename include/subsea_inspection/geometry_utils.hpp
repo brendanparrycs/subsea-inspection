@@ -1,10 +1,11 @@
-#ifndef SUBSEA_INSPECTION_GEOMETRY_UTILS_HPP_
-#define SUBSEA_INSPECTION_GEOMETRY_UTILS_HPP_
+#ifndef SUBSEA_INSPECTION__GEOMETRY_UTILS_HPP_
+#define SUBSEA_INSPECTION__GEOMETRY_UTILS_HPP_
 
 #include <cmath>
 
 namespace subsea_inspection
 {
+
 namespace geometry
 {
 
@@ -71,6 +72,7 @@ inline void world_to_body_frame(double dx_world, double dy_world, double current
 }
 
 }  // namespace geometry
+
 }  // namespace subsea_inspection
 
-#endif  // SUBSEA_INSPECTION_GEOMETRY_UTILS_HPP_
+#endif  // SUBSEA_INSPECTION__GEOMETRY_UTILS_HPP_

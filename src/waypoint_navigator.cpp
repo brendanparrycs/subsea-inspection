@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -13,8 +14,11 @@
 #include "subsea_inspection/action/navigate_to_waypoint.hpp"
 #include "subsea_inspection/common/config_validation.hpp"
 #include "subsea_inspection/common/constants.hpp"
+#include "subsea_inspection/common/input_watchdog.hpp"
+#include "subsea_inspection/common/topic_names.hpp"
 #include "subsea_inspection/geometry_utils.hpp"
 #include "subsea_inspection/pid_controller.hpp"
+#include "subsea_inspection/station_keeping.hpp"
 #include "tf2/LinearMath/Matrix3x3.hpp"
 #include "tf2/LinearMath/Quaternion.hpp"
 
@@ -50,7 +54,14 @@ constexpr double kCloseRangeDistanceM = 0.6;
 constexpr double kCloseRangeHeadingToleranceDeg = 20.0;
 constexpr double kMaximumControlStepSec = 1.0;
 constexpr double kPidIntegralLimit = 0.5;
+constexpr double kDefaultOdometryTimeoutSec = 0.5;
 
+/// @brief Validates PID gains and the corresponding maximum speed parameter.
+/// @param kp Proportional gain.
+/// @param ki Integral gain.
+/// @param kd Derivative gain.
+/// @param max_speed Maximum commanded speed.
+/// @param axis_name Axis label used in validation errors.
 void validate_pid_parameters(double kp, double ki, double kd, double max_speed,
                              const std::string &controller_name)
 {
@@ -82,8 +93,15 @@ public:
     has_active_goal_(false),
     station_keeping_(false)
   {
-    this->declare_parameter<std::string>("odom_topic", "/model/bluerov2_heavy/odometry");
-    this->declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel");
+    this->declare_parameter<std::string>("odom_topic",
+                                         subsea_inspection::topic_names::kDefaultOdometry);
+    this->declare_parameter<std::string>("cmd_vel_topic",
+                                         subsea_inspection::topic_names::kDefaultCmdVel);
+    this->declare_parameter<double>("odom_timeout", kDefaultOdometryTimeoutSec);
+    odom_timeout_sec_ = this->get_parameter("odom_timeout").as_double();
+    if (!subsea_inspection::config_validation::is_finite_positive(odom_timeout_sec_)) {
+      throw std::invalid_argument("Parameter 'odom_timeout' must be finite and > 0");
+    }
 
     // Control gating parameters
     this->declare_parameter<double>("heading_tolerance_deg", kDefaultHeadingToleranceDeg);
@@ -237,6 +255,7 @@ private:
     }
 
     active_goal_handle_ = goal_handle;
+    last_odometry_time_ = std::chrono::steady_clock::now();
     const auto goal = goal_handle->get_goal();
 
     // Update target coordinates from action goal
@@ -270,6 +289,7 @@ private:
   /// @param msg Shared pointer to incoming nav_msgs/msg/Odometry message.
   void odometry_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
   {
+    last_odometry_time_ = std::chrono::steady_clock::now();
     current_x_ = msg->pose.pose.position.x;
     current_y_ = msg->pose.pose.position.y;
     current_z_ = msg->pose.pose.position.z;
@@ -287,6 +307,27 @@ private:
   /// commands.
   void control_loop()
   {
+    const bool odometry_stale = subsea_inspection::input_watchdog::is_stale(
+      last_odometry_time_, std::chrono::steady_clock::now(),
+      std::chrono::duration<double>(odom_timeout_sec_));
+    if (odometry_stale && (has_active_goal_ || station_keeping_)) {
+      RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+                            "Odometry exceeded %.2f s timeout; stopping navigation",
+                            odom_timeout_sec_);
+      geometry_msgs::msg::Twist stop_twist;
+      cmd_vel_publisher_->publish(stop_twist);
+      station_keeping_ = false;
+      if (has_active_goal_ && active_goal_handle_ && active_goal_handle_->is_active()) {
+        auto result = std::make_shared<NavigateToWaypoint::Result>();
+        result->success = false;
+        result->elapsed_time = (this->now() - goal_start_time_).seconds();
+        result->final_distance = std::numeric_limits<double>::infinity();
+        active_goal_handle_->abort(result);
+      }
+      has_active_goal_ = false;
+      return;
+    }
+
     if (!has_odometry_) {
       RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
                            "Waiting for initial odometry...");
@@ -373,13 +414,13 @@ private:
     if (station_keeping_ && !has_active_goal_) {
       // Hold the captured yaw and correct position in the vehicle's body frame. Using sway
       // avoids rotating the inspection camera away from the pipeline just to fight lateral current.
-      double surge_error = 0.0;
-      double sway_error = 0.0;
-      geometry::world_to_body_frame(dx, dy, current_yaw_, surge_error, sway_error);
+      const auto command = subsea_inspection::compute_station_keeping_command(
+        dx, dy, dz, station_yaw_, current_yaw_, dt, surge_pid_, sway_pid_, heave_pid_, yaw_pid_);
+      cmd_surge = command.surge_mps;
+      cmd_sway = command.sway_mps;
+      cmd_heave = command.heave_mps;
+      cmd_yaw = command.yaw_rate_radps;
       yaw_error = geometry::angle_error(station_yaw_, current_yaw_);
-      cmd_surge = surge_pid_.compute(surge_error, dt);
-      cmd_sway = sway_pid_.compute(sway_error, dt);
-      cmd_yaw = yaw_pid_.compute(yaw_error, dt);
     } else {
       // Waypoint transit uses line-of-sight heading and turn-before-drive guidance.
       const double desired_yaw =
@@ -452,6 +493,12 @@ private:
 
   /// @brief Flag indicating odometry data has been received.
   bool has_odometry_;
+
+  /// @brief Maximum wall-clock age of odometry before navigation stops.
+  double odom_timeout_sec_{kDefaultOdometryTimeoutSec};
+
+  /// @brief Wall-clock time at which the latest odometry message arrived.
+  std::chrono::steady_clock::time_point last_odometry_time_{std::chrono::steady_clock::now()};
 
   /// @brief Flag indicating an action goal is actively being pursued.
   bool has_active_goal_;

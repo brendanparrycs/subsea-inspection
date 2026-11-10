@@ -17,7 +17,13 @@
 #include "std_msgs/msg/bool.hpp"
 #include "subsea_inspection/action/navigate_to_waypoint.hpp"
 #include "subsea_inspection/common/config_validation.hpp"
+#include "subsea_inspection/common/topic_names.hpp"
 #include "subsea_inspection/mission_route.hpp"
+#include "subsea_inspection/obstacle_geometry.hpp"
+#include "tf2/exceptions.hpp"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
+#include "tf2_ros/buffer.hpp"
+#include "tf2_ros/transform_listener.hpp"
 #include "yaml-cpp/yaml.h"
 
 using namespace std::chrono_literals;
@@ -35,7 +41,6 @@ constexpr double kDetourAcceptanceRadiusM = 0.6;
 constexpr double kMinimumObstacleForwardDistanceM = 0.8;
 constexpr double kDetourForwardClearanceM = 1.2;
 constexpr double kSurfaceDepthLimitM = -0.5;
-constexpr double kMinimumDirectionLengthM = 1e-3;
 constexpr double kMinimumSegmentLengthM = 1e-3;
 constexpr std::chrono::milliseconds kSequencerPeriod{100};
 }  // namespace
@@ -83,11 +88,17 @@ public:
     is_detour_active_(false),
     has_avoided_once_(false)
   {
+    tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_, this, false);
+
     // Declare mission and avoidance parameters
     this->declare_parameter<std::string>("mission_file", "");
-    this->declare_parameter<std::string>("odom_topic", "/model/bluerov2_heavy/odometry");
-    this->declare_parameter<std::string>("obstacle_topic", "/obstacle/closest_point");
-    this->declare_parameter<std::string>("mission_complete_topic", "/mission/complete");
+    this->declare_parameter<std::string>("odom_topic",
+                                         subsea_inspection::topic_names::kDefaultOdometry);
+    this->declare_parameter<std::string>("obstacle_topic",
+                                         subsea_inspection::topic_names::kDefaultClosestObstacle);
+    this->declare_parameter<std::string>("mission_complete_topic",
+                                         subsea_inspection::topic_names::kDefaultMissionComplete);
     this->declare_parameter<std::string>("avoidance_strategy", "fly_over");
     this->declare_parameter<double>("avoidance_heave_clearance", kDefaultAvoidanceHeaveClearanceM);
     this->declare_parameter<double>("avoidance_lateral_offset", kDefaultAvoidanceLateralOffsetM);
@@ -172,6 +183,7 @@ private:
   /// @param msg Incoming odometry message from Gazebo/localization.
   void odometry_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
   {
+    odometry_frame_id_ = msg->header.frame_id;
     current_x_ = msg->pose.pose.position.x;
     current_y_ = msg->pose.pose.position.y;
     current_z_ = msg->pose.pose.position.z;
@@ -179,7 +191,7 @@ private:
 
   /// @brief Obstacle callback triggering reactive detour avoidance when an obstacle enters the
   /// corridor.
-  /// @param msg Incoming closest obstacle point in body/camera coordinates.
+  /// @param msg Incoming closest obstacle point stamped in the sensor frame.
   void obstacle_callback(const geometry_msgs::msg::PointStamped::SharedPtr msg)
   {
     // Only react if actively navigating toward an inspection waypoint
@@ -199,17 +211,39 @@ private:
       return;
     }
 
-    double obs_dist = std::hypot(msg->point.x, msg->point.y, msg->point.z);
+    if (odometry_frame_id_.empty()) {
+      RCLCPP_ERROR(this->get_logger(),
+                   "Cannot plan obstacle detour before the odometry frame is known");
+      state_ = MissionState::ABORTED;
+      action_client_->async_cancel_goal(current_goal_handle_);
+      return;
+    }
+
+    geometry_msgs::msg::PointStamped obstacle_in_odometry_frame;
+    try {
+      obstacle_in_odometry_frame = tf_buffer_->transform(*msg, odometry_frame_id_);
+    }
+    catch (const tf2::TransformException &exception) {
+      RCLCPP_ERROR(this->get_logger(), "Cannot transform obstacle point into '%s': %s",
+                   odometry_frame_id_.c_str(), exception.what());
+      state_ = MissionState::ABORTED;
+      action_client_->async_cancel_goal(current_goal_handle_);
+      return;
+    }
+
+    const auto &obstacle = obstacle_in_odometry_frame.point;
+    const double obs_dist =
+      std::hypot(obstacle.x - current_x_, obstacle.y - current_y_, obstacle.z - current_z_);
     RCLCPP_WARN(this->get_logger(),
                 "\n"
                 "========================================================================\n"
                 " [OBSTACLE DETECTED] Nearest point: %.2fm ahead [X: %.2f, Y: %.2f, Z: %.2f]m\n"
                 " Triggering reactive '%s' avoidance maneuver!\n"
                 "========================================================================",
-                obs_dist, msg->point.x, msg->point.y, msg->point.z, avoidance_strategy_.c_str());
+                obs_dist, obstacle.x, obstacle.y, obstacle.z, avoidance_strategy_.c_str());
 
     // Plan dynamic detour waypoint
-    active_detour_waypoint_ = compute_detour_waypoint(msg->point);
+    active_detour_waypoint_ = compute_detour_waypoint(obstacle);
     obstacle_avoidance_events_++;
     has_avoided_once_ = true;
     last_avoidance_time_ = this->now();
@@ -222,7 +256,7 @@ private:
 
   /// @brief Computes a 3D detour waypoint based on chosen avoidance strategy (Fly-Over vs Lateral
   /// Bypass).
-  /// @param obstacle_point Relative coordinates of detected obstacle.
+  /// @param obstacle_point Detected obstacle coordinates in the odometry/world frame.
   /// @return 3D detour waypoint in world coordinates.
   Waypoint compute_detour_waypoint(const geometry_msgs::msg::Point &obstacle_point)
   {
@@ -232,24 +266,31 @@ private:
     detour.acceptance_radius = kDetourAcceptanceRadiusM;
     detour.dwell_sec = 0.0;
 
-    // Compute unit vector from current position toward the target waypoint
-    double dx = target_wp.x - current_x_;
-    double dy = target_wp.y - current_y_;
-    double d_2d = std::hypot(dx, dy);
+    const double route_x = target_wp.x - current_x_;
+    const double route_y = target_wp.y - current_y_;
+    const double route_length = std::hypot(route_x, route_y);
+    const double ux = (route_length > kMinimumSegmentLengthM) ? route_x / route_length : 1.0;
+    const double uy = (route_length > kMinimumSegmentLengthM) ? route_y / route_length : 0.0;
 
-    double ux = (d_2d > kMinimumDirectionLengthM) ? (dx / d_2d) : 1.0;
-    double uy = (d_2d > kMinimumDirectionLengthM) ? (dy / d_2d) : 0.0;
+    subsea_inspection::RouteRelativeObstacle route_projection;
+    if (!subsea_inspection::project_obstacle_to_route(current_x_, current_y_, target_wp.x,
+                                                      target_wp.y, obstacle_point.x,
+                                                      obstacle_point.y, route_projection))
+    {
+      RCLCPP_WARN(this->get_logger(),
+                  "Obstacle detour route geometry is degenerate; using minimum forward advance");
+      route_projection = {kMinimumObstacleForwardDistanceM, 0.0, 0.0};
+    }
 
-    // Advance forward past the detected obstacle with clearance margin
-    double obs_dist =
-      std::max(kMinimumObstacleForwardDistanceM, static_cast<double>(obstacle_point.x));
-    double advance_dist = obs_dist + kDetourForwardClearanceM;
+    // Advance along the route past the obstacle with a clearance margin.
+    const double advance_dist =
+      std::max(kMinimumObstacleForwardDistanceM, route_projection.along_track_m) +
+      kDetourForwardClearanceM;
 
     if (avoidance_strategy_ == "lateral_bypass") {
       // Lateral bypass: move perpendicularly to the line of transit
-      // If obstacle is on right (y < 0 in camera frame), shift left (+normal). Otherwise shift
-      // right (-normal).
-      double side_sign = (obstacle_point.y < 0.0) ? 1.0 : -1.0;
+      // Positive cross-track is left of route travel, so bypass to the opposite side.
+      const double side_sign = (route_projection.cross_track_m < 0.0) ? 1.0 : -1.0;
       detour.x = current_x_ + (ux * advance_dist) + (-uy * avoidance_lateral_offset_ * side_sign);
       detour.y = current_y_ + (uy * advance_dist) + (ux * avoidance_lateral_offset_ * side_sign);
       detour.z = current_z_;
@@ -633,6 +674,9 @@ private:
   /// @brief ROS 2 topic name for odometry feedback.
   std::string odom_topic_;
 
+  /// @brief Coordinate frame declared by the incoming odometry messages.
+  std::string odometry_frame_id_;
+
   /// @brief ROS 2 topic name for closest obstacle point alerts.
   std::string obstacle_topic_;
 
@@ -713,6 +757,11 @@ private:
 
   /// @brief 100ms (10Hz) periodic loop timer for the sequencer state machine.
   rclcpp::TimerBase::SharedPtr timer_;
+
+  /// @brief TF buffer/listener used to convert obstacle points into the odometry frame.
+  std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 };
 
 /// @brief Main entry point: initializes rclcpp, spins the MissionPlanner node, and cleanly shuts

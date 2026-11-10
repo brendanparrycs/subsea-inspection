@@ -17,6 +17,8 @@ find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(tf2 REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
@@ -38,7 +40,9 @@ endfunction()
 # Build each ROS node as its own executable with only its direct dependencies.
 add_executable(robot_state_monitor src/robot_state_monitor.cpp)
 configure_subsea_target(robot_state_monitor)
-target_link_libraries(robot_state_monitor PRIVATE rclcpp::rclcpp nav_msgs::nav_msgs tf2::tf2)
+target_link_libraries(robot_state_monitor PRIVATE
+  rclcpp::rclcpp nav_msgs::nav_msgs tf2::tf2 tf2_ros::tf2_ros
+)
 
 add_executable(motion_controller src/motion_controller.cpp)
 configure_subsea_target(motion_controller)
@@ -76,6 +80,8 @@ target_link_libraries(mission_planner PRIVATE
   geometry_msgs::geometry_msgs
   std_msgs::std_msgs
   std_srvs::std_srvs
+  tf2_geometry_msgs::tf2_geometry_msgs
+  tf2_ros::tf2_ros
   yaml-cpp
   "${cpp_typesupport_target}"
 )
@@ -151,7 +157,9 @@ if(BUILD_TESTING)
   add_subsea_gtest(test_point_cloud_filter test/test_point_cloud_filter.cpp)
   add_subsea_gtest(test_pipeline_tracker test/test_pipeline_tracker.cpp)
   add_subsea_gtest(test_config_validation test/test_config_validation.cpp)
+  add_subsea_gtest(test_input_watchdog test/test_input_watchdog.cpp)
   add_subsea_gtest(test_mission_route test/test_mission_route.cpp)
+  add_subsea_gtest(test_station_keeping test/test_station_keeping.cpp)
 
   # Run ROS linters on build metadata only; source-wide linting will be enabled after the code pass.
   ament_lint_cmake(CMakeLists.txt)

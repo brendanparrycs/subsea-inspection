@@ -5,11 +5,14 @@
 #include <memory>
 #include <string>
 
+#include "geometry_msgs/msg/transform_stamped.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "subsea_inspection/common/constants.hpp"
+#include "subsea_inspection/common/topic_names.hpp"
 #include "tf2/LinearMath/Matrix3x3.hpp"
 #include "tf2/LinearMath/Quaternion.hpp"
+#include "tf2_ros/transform_broadcaster.hpp"
 
 namespace
 {
@@ -27,8 +30,11 @@ public:
   RobotStateMonitor()
   : Node("robot_state_monitor")
   {
+    transform_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+
     // Declare and get parameters
-    this->declare_parameter<std::string>("odom_topic", "/model/bluerov2_heavy/odometry");
+    this->declare_parameter<std::string>("odom_topic",
+                                         subsea_inspection::topic_names::kDefaultOdometry);
     std::string odom_topic = this->get_parameter("odom_topic").as_string();
 
     // Standard reliable QoS matching Gazebo bridge publisher
@@ -50,6 +56,17 @@ private:
   /// @param msg Shared pointer to incoming nav_msg/msg/Odometry message.
   void odometry_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
   {
+    if (!msg->header.frame_id.empty() && !msg->child_frame_id.empty()) {
+      geometry_msgs::msg::TransformStamped transform;
+      transform.header = msg->header;
+      transform.child_frame_id = msg->child_frame_id;
+      transform.transform.translation.x = msg->pose.pose.position.x;
+      transform.transform.translation.y = msg->pose.pose.position.y;
+      transform.transform.translation.z = msg->pose.pose.position.z;
+      transform.transform.rotation = msg->pose.pose.orientation;
+      transform_broadcaster_->sendTransform(transform);
+    }
+
     // Position (meters)
     const auto &position = msg->pose.pose.position;
 
@@ -79,6 +96,9 @@ private:
   /// @brief Subscription handle retained to keep the odometry listener active over the node's
   /// lifecycle.
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subscription_;
+
+  /// @brief Broadcasts the received odometry pose as its declared parent-to-child TF transform.
+  std::unique_ptr<tf2_ros::TransformBroadcaster> transform_broadcaster_;
 };
 
 /// @brief Main entry point: initializes rclcpp, spins the RobotStateMonitor node, and cleanly shuts

@@ -3,6 +3,7 @@ keyboard_teleop:
     linear_speed: 0.5
     heave_speed: 0.3
     angular_speed: 0.5
+    key_timeout: 0.75
 
 joystick_teleop:
   ros__parameters:

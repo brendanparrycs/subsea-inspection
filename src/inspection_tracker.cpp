@@ -21,6 +21,7 @@
 #include "std_msgs/msg/header.hpp"
 #include "std_srvs/srv/trigger.hpp"
 #include "subsea_inspection/common/config_validation.hpp"
+#include "subsea_inspection/common/topic_names.hpp"
 #include "subsea_inspection/geometry_utils.hpp"
 #include "subsea_inspection/pipeline_tracker.hpp"
 #include "tf2/LinearMath/Matrix3x3.hpp"
@@ -52,7 +53,7 @@ public:
   InspectionTracker()
   : Node("inspection_tracker"),
     mission_file_(""),
-    odometry_topic_("/model/bluerov2_heavy/odometry"),
+    odometry_topic_(subsea_inspection::topic_names::kDefaultOdometry),
     standoff_height_(kDefaultStandoffHeightM),
     bin_resolution_(subsea_inspection::kDefaultPipelineBinResolutionM)
   {
@@ -61,7 +62,8 @@ public:
     // Declare and get parameters
     this->declare_parameter<std::string>("mission_file", mission_file_);
     this->declare_parameter<std::string>("odom_topic", odometry_topic_);
-    this->declare_parameter<std::string>("mission_complete_topic", "/mission/complete");
+    this->declare_parameter<std::string>("mission_complete_topic",
+                                         subsea_inspection::topic_names::kDefaultMissionComplete);
     this->declare_parameter<std::string>("report_directory", "reports");
     this->declare_parameter<double>("standoff_height", standoff_height_);
     this->declare_parameter<double>("bin_resolution", bin_resolution_);
@@ -200,7 +202,6 @@ private:
     // Publish closest point on pipe centerline
     geometry_msgs::msg::PointStamped proj_msg;
     proj_msg.header = msg->header;
-    proj_msg.header.frame_id = "world";
     proj_msg.point.x = latest_result_.projected_point.x;
     proj_msg.point.y = latest_result_.projected_point.y;
     proj_msg.point.z = latest_result_.projected_point.z;
@@ -233,7 +234,6 @@ private:
     // 1. Pipeline Centerline (Dark Slate Gray Tube)
     visualization_msgs::msg::Marker pipe_marker;
     pipe_marker.header = header;
-    pipe_marker.header.frame_id = "world";
     pipe_marker.ns = "pipeline_centerline";
     pipe_marker.id = 0;
     pipe_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
@@ -265,7 +265,6 @@ private:
     // 2. Dynamic Orthogonal Projection Ray from ROV to Pipe Centerline
     visualization_msgs::msg::Marker ray_marker;
     ray_marker.header = header;
-    ray_marker.header.frame_id = "world";
     ray_marker.ns = "orthogonal_projection_ray";
     ray_marker.id = 1;
     ray_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;

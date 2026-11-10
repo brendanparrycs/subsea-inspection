@@ -198,8 +198,14 @@ def generate_launch_description():
             "') + ' ' + str('",
             obstacle_z,
             "') + ' 0 0 0</pose>' + ",
-            f'\'<collision name="c"><geometry><box><size>{TEST_OBSTACLE_SIZE_M} {TEST_OBSTACLE_SIZE_M} {TEST_OBSTACLE_SIZE_M}</size></box></geometry></collision>\' + ',
-            f'\'<visual name="v"><geometry><box><size>{TEST_OBSTACLE_SIZE_M} {TEST_OBSTACLE_SIZE_M} {TEST_OBSTACLE_SIZE_M}</size></box></geometry>\' + ',
+            (
+                f"'<collision name=\"c\"><geometry><box><size>{TEST_OBSTACLE_SIZE_M} "
+                f"{TEST_OBSTACLE_SIZE_M} {TEST_OBSTACLE_SIZE_M}</size></box></geometry></collision>' + "
+            ),
+            (
+                f"'<visual name=\"v\"><geometry><box><size>{TEST_OBSTACLE_SIZE_M} "
+                f"{TEST_OBSTACLE_SIZE_M} {TEST_OBSTACLE_SIZE_M}</size></box></geometry>' + "
+            ),
             "'<material><ambient>1 0 0 1</ambient><diffuse>1 0 0 1</diffuse></material></visual></link></model></sdf>'",
         ]
     )

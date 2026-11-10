@@ -1,5 +1,5 @@
-#ifndef SUBSEA_INSPECTION_POINT_CLOUD_FILTER_HPP_
-#define SUBSEA_INSPECTION_POINT_CLOUD_FILTER_HPP_
+#ifndef SUBSEA_INSPECTION__POINT_CLOUD_FILTER_HPP_
+#define SUBSEA_INSPECTION__POINT_CLOUD_FILTER_HPP_
 
 #include <cmath>
 #include <limits>
@@ -8,7 +8,7 @@
 namespace subsea_inspection
 {
 
-/// Default obstacle distance threshold used when no runtime configuration is provided.
+/// @brief Default obstacle distance threshold used when no runtime configuration is provided.
 inline constexpr double kDefaultDetectionThresholdM = 1.5;
 
 /// @brief Represents a single 3D point in Cartesian coordinates.
@@ -101,4 +101,4 @@ inline FilterResult filter_corridor(const std::vector<Point3D> &input_points,
 
 }  // namespace subsea_inspection
 
-#endif  // SUBSEA_INSPECTION_POINT_CLOUD_FILTER_HPP_
+#endif  // SUBSEA_INSPECTION__POINT_CLOUD_FILTER_HPP_

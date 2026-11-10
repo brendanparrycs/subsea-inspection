@@ -9,7 +9,7 @@ DEPTH_CAMERA_Z_M = 0.067
 DEPTH_CAMERA_ROLL_RAD = 0.0
 DEPTH_CAMERA_PITCH_RAD = 0.0
 DEPTH_CAMERA_YAW_RAD = 0.0
-DEPTH_CAMERA_PARENT_FRAME = 'bluerov2_heavy/base_link'
+DEPTH_CAMERA_PARENT_FRAME = 'base_link'
 DEPTH_CAMERA_FRAME = 'bluerov2_heavy/camera_link/depth_camera'
 
 
@@ -19,7 +19,8 @@ def generate_launch_description():
         executable='parameter_bridge',
         name='point_cloud_bridge',
         arguments=[
-            '/model/bluerov2_heavy/depth_camera/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked'
+            '/model/bluerov2_heavy/depth_camera/points@sensor_msgs/msg/PointCloud2[gz.msgs.'
+            'PointCloudPacked'
         ],
         output='screen',
     )

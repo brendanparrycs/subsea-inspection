@@ -1,8 +1,6 @@
 mission:
   name: "procedural_pipeline_inspection_42"
   default_acceptance_radius: 0.40
-  default_speed: 0.5
-  timeout_per_waypoint_sec: 45.0
   waypoints:
     - name: "pipe_entry"
       x: 2.00

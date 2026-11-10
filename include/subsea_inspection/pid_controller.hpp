@@ -1,5 +1,5 @@
-#ifndef SUBSEA_INSPECTION_PID_CONTROLLER_HPP_
-#define SUBSEA_INSPECTION_PID_CONTROLLER_HPP_
+#ifndef SUBSEA_INSPECTION__PID_CONTROLLER_HPP_
+#define SUBSEA_INSPECTION__PID_CONTROLLER_HPP_
 
 #include <algorithm>
 #include <cmath>
@@ -118,4 +118,4 @@ private:
 
 }  // namespace subsea_inspection
 
-#endif  // SUBSEA_INSPECTION_PID_CONTROLLER_HPP_
+#endif  // SUBSEA_INSPECTION__PID_CONTROLLER_HPP_

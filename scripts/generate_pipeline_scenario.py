@@ -24,8 +24,6 @@ DEFAULT_MAX_BEND_DEG = 25.0
 DEFAULT_STANDOFF_HEIGHT_M = 0.8
 DEFAULT_ACCEPTANCE_RADIUS_M = 0.40
 DEFAULT_WAYPOINT_SPACING_M = 2.0
-DEFAULT_MISSION_SPEED_MPS = 0.5
-DEFAULT_WAYPOINT_TIMEOUT_SEC = 45.0
 ENDPOINT_DWELL_SEC = 2.0
 
 
@@ -38,7 +36,7 @@ def generate_pipeline_geometry(
     rng: random.Random = None,
 ) -> List[Tuple[float, float, float]]:
     """
-    Computes 3D vertices for a continuous subsea pipeline with randomized bends and gentle bathymetry slopes.
+    Compute 3D vertices for a continuous subsea pipeline with randomized bends and bathymetry slopes.
 
     :param num_segments: Number of linear pipe segments.
     :param min_length: Minimum segment length in meters.
@@ -149,7 +147,7 @@ def generate_pipeline_sdf(
     obstacles: List[Dict[str, float]] = None,
 ) -> str:
     """
-    Generates Gazebo Simulation Description Format (SDF v1.8) string for the 3D pipeline model.
+    Generate an SDF v1.8 string for the 3D pipeline model.
 
     :param vertices: Ordered list of 3D pipeline vertices.
     :param pipe_radius: Pipe outer radius in meters.
@@ -281,7 +279,7 @@ def generate_mission_yaml(
     seed_used: int = None,
 ) -> str:
     """
-    Generates mission YAML string with dense waypoints tracking directly above the pipeline centerline.
+    Generate mission YAML with dense waypoints above the pipeline centerline.
 
     :param vertices: 3D pipeline vertices (segment endpoints).
     :param standoff_height: Elevation above the pipe crown for inspection transit (meters).
@@ -316,8 +314,6 @@ def generate_mission_yaml(
         'mission:',
         f'  name: "procedural_pipeline_inspection_{seed_used if seed_used is not None else "rand"}"',
         f'  default_acceptance_radius: {acceptance_radius:.2f}',
-        f'  default_speed: {DEFAULT_MISSION_SPEED_MPS}',
-        f'  timeout_per_waypoint_sec: {DEFAULT_WAYPOINT_TIMEOUT_SEC}',
         '  waypoints:',
     ]
 

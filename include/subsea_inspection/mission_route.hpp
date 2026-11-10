@@ -1,5 +1,5 @@
-#ifndef SUBSEA_INSPECTION_MISSION_ROUTE_HPP_
-#define SUBSEA_INSPECTION_MISSION_ROUTE_HPP_
+#ifndef SUBSEA_INSPECTION__MISSION_ROUTE_HPP_
+#define SUBSEA_INSPECTION__MISSION_ROUTE_HPP_
 
 #include <cmath>
 
@@ -52,4 +52,4 @@ inline bool has_passed_waypoint(double vehicle_x, double vehicle_y, double previ
 
 }  // namespace subsea_inspection
 
-#endif  // SUBSEA_INSPECTION_MISSION_ROUTE_HPP_
+#endif  // SUBSEA_INSPECTION__MISSION_ROUTE_HPP_

@@ -14,6 +14,9 @@
 #include "mavros_msgs/srv/set_mode.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "subsea_inspection/common/config_validation.hpp"
+#include "subsea_inspection/common/input_watchdog.hpp"
+#include "subsea_inspection/common/manual_control_utils.hpp"
+#include "subsea_inspection/common/topic_names.hpp"
 
 namespace
 {
@@ -31,7 +34,6 @@ constexpr auto kMavrosStateTopic = "/mavros/state";
 constexpr auto kManualControlTopic = "/mavros/manual_control/send";
 constexpr auto kSetModeService = "/mavros/set_mode";
 constexpr auto kArmingService = "/mavros/cmd/arming";
-constexpr auto kDefaultCmdVelTopic = "/cmd_vel";
 }  // namespace
 
 /// @brief ROS 2 node that controls BlueROV2 Heavy motion via MAVROS services and topics.
@@ -40,14 +42,14 @@ class MotionController : public rclcpp::Node
 public:
   /// @brief Initializes node, sets up MAVROS subscribers, service clients, and control loop.
   MotionController()
-  : Node("motion_controller"),
-    last_cmd_vel_time_(0, 0, RCL_ROS_TIME)
+  : Node("motion_controller")
   {
     // Declare and get parameters
     this->declare_parameter<double>("linear_scale", kDefaultLinearScale);
     this->declare_parameter<double>("angular_scale", kDefaultAngularScale);
     this->declare_parameter<double>("cmd_vel_timeout", kDefaultCmdVelTimeoutSec);
-    this->declare_parameter<std::string>("cmd_vel_topic", kDefaultCmdVelTopic);
+    this->declare_parameter<std::string>("cmd_vel_topic",
+                                         subsea_inspection::topic_names::kDefaultCmdVel);
 
     linear_scale_ = this->get_parameter("linear_scale").as_double();
     angular_scale_ = this->get_parameter("angular_scale").as_double();
@@ -104,7 +106,7 @@ private:
   void cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg)
   {
     target_twist_ = *msg;
-    last_cmd_vel_time_ = this->now();
+    last_cmd_vel_time_ = std::chrono::steady_clock::now();
   }
 
   /// @brief 50ms (20Hz) control loop: verifies state, sets ALT_HOLD, arms vehicle, and publishes
@@ -135,7 +137,9 @@ private:
     }
 
     // Check if cmd_vel has timed out
-    bool cmd_vel_active = (this->now() - last_cmd_vel_time_).seconds() < cmd_vel_timeout_sec_;
+    const bool cmd_vel_active = !subsea_inspection::input_watchdog::is_stale(
+      last_cmd_vel_time_, std::chrono::steady_clock::now(),
+      std::chrono::duration<double>(cmd_vel_timeout_sec_));
 
     float target_surge = cmd_vel_active ? static_cast<float>(target_twist_.linear.x) : 0.0f;
     float target_sway = cmd_vel_active ? static_cast<float>(target_twist_.linear.y) : 0.0f;
@@ -147,8 +151,9 @@ private:
       std::clamp(target_surge * linear_scale_, -kManualControlAxisLimit, kManualControlAxisLimit));
     // ROS body-frame Twist uses +Y to the left, while MAVLink MANUAL_CONTROL uses +Y to the
     // right. Convert conventions at this interface boundary.
-    float y = static_cast<float>(
-      std::clamp(-target_sway * linear_scale_, -kManualControlAxisLimit, kManualControlAxisLimit));
+    float y = static_cast<float>(std::clamp(
+      subsea_inspection::manual_control::ros_sway_to_mavlink_y(target_sway) * linear_scale_,
+      -kManualControlAxisLimit, kManualControlAxisLimit));
     float z =
       static_cast<float>(kManualControlNeutralDepth + std::clamp(target_heave * linear_scale_,
                                                                  -kManualControlVerticalLimit,
@@ -206,8 +211,8 @@ private:
   /// @brief Watchdog timeout in seconds after which vehicle stops if no cmd_vel arrives.
   double cmd_vel_timeout_sec_;
 
-  /// @brief Timestamp when the latest cmd_vel message was received.
-  rclcpp::Time last_cmd_vel_time_;
+  /// @brief Wall-clock timestamp when the latest cmd_vel message was received.
+  std::chrono::steady_clock::time_point last_cmd_vel_time_{std::chrono::steady_clock::now()};
 
   /// @brief Most recently received velocity command.
   geometry_msgs::msg::Twist target_twist_;

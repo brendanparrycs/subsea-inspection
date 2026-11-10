@@ -11,6 +11,8 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/joy.hpp"
 #include "subsea_inspection/common/config_validation.hpp"
+#include "subsea_inspection/common/input_watchdog.hpp"
+#include "subsea_inspection/common/topic_names.hpp"
 
 namespace
 {
@@ -30,7 +32,6 @@ constexpr double kDefaultJoyTimeoutSec = 0.5;
 constexpr auto kJoyTopic = "/joy";
 constexpr std::chrono::milliseconds kPublishPeriod{100};
 constexpr std::size_t kQueueDepth = 10;
-constexpr auto kDefaultCmdVelTopic = "/cmd_vel";
 }  // namespace
 
 /// @brief Translates gamepad sensor_msgs/msg/Joy axis and button states into
@@ -61,7 +62,8 @@ public:
     this->declare_parameter<double>("max_heave_speed", kDefaultMaxHeaveSpeedMps);
     this->declare_parameter<double>("max_angular_speed", kDefaultMaxAngularSpeedRadps);
     this->declare_parameter<double>("joy_timeout", kDefaultJoyTimeoutSec);
-    this->declare_parameter<std::string>("cmd_vel_topic", kDefaultCmdVelTopic);
+    this->declare_parameter<std::string>("cmd_vel_topic",
+                                         subsea_inspection::topic_names::kDefaultCmdVel);
 
     // Retrieve parameter values
     axis_surge_ = this->get_parameter("axis_surge").as_int();
@@ -156,8 +158,11 @@ private:
   /// @brief 10Hz periodic timer callback that publishes current velocity commands on /cmd_vel.
   void publish_twist()
   {
-    const auto elapsed = std::chrono::steady_clock::now() - last_joy_message_time_;
-    if (!has_received_joy_message_ || elapsed >= std::chrono::duration<double>(joy_timeout_sec_)) {
+    const auto now = std::chrono::steady_clock::now();
+    if (!has_received_joy_message_ ||
+        subsea_inspection::input_watchdog::is_stale(
+          last_joy_message_time_, now, std::chrono::duration<double>(joy_timeout_sec_)))
+    {
       cmd_vel_publisher_->publish(geometry_msgs::msg::Twist());
       return;
     }

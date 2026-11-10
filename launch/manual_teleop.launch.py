@@ -1,7 +1,4 @@
-"""
-Launch file for manual teleoperation of BlueROV2 Heavy in POSIM Gazebo.
-Supports switching between keyboard and joystick teleoperation modes.
-"""
+"""Launch manual BlueROV2 Heavy teleoperation in POSIM Gazebo."""
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
@@ -13,8 +10,7 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    """Generates the launch description for manual ROV simulation testing."""
-
+    """Generate the launch description for manual ROV simulation testing."""
     # Launch arguments
     teleop_arg = DeclareLaunchArgument(
         'teleop',

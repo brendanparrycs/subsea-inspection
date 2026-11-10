@@ -11,6 +11,7 @@
 #include "sensor_msgs/point_cloud2_iterator.hpp"
 #include "std_msgs/msg/header.hpp"
 #include "subsea_inspection/common/config_validation.hpp"
+#include "subsea_inspection/common/topic_names.hpp"
 #include "subsea_inspection/point_cloud_filter.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
 
@@ -31,9 +32,9 @@ class ObstacleDetector : public rclcpp::Node
 public:
   ObstacleDetector()
   : Node("obstacle_detector"),
-    point_cloud_topic_("/model/bluerov2_heavy/depth_camera/points"),
+    point_cloud_topic_(subsea_inspection::topic_names::kDefaultPointCloud),
     detection_threshold_(subsea_inspection::kDefaultDetectionThresholdM),
-    closest_point_topic_("/obstacle/closest_point")
+    closest_point_topic_(subsea_inspection::topic_names::kDefaultClosestObstacle)
   {
     const RoiBoundingBox default_roi{};
 

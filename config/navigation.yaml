@@ -1,6 +1,7 @@
 waypoint_navigator:
   ros__parameters:
     heading_tolerance_deg: 20.0
+    odom_timeout: 0.5
     surge_kp: 0.5
     surge_ki: 0.02
     surge_kd: 0.1

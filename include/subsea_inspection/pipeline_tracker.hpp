@@ -1,5 +1,5 @@
-#ifndef SUBSEA_INSPECTION_PIPELINE_TRACKER_HPP_
-#define SUBSEA_INSPECTION_PIPELINE_TRACKER_HPP_
+#ifndef SUBSEA_INSPECTION__PIPELINE_TRACKER_HPP_
+#define SUBSEA_INSPECTION__PIPELINE_TRACKER_HPP_
 
 #include <algorithm>
 #include <cmath>
@@ -16,8 +16,9 @@
 namespace subsea_inspection
 {
 
-/// Default distance resolution used to discretize pipeline inspection coverage.
+/// @brief Default distance resolution used to discretize pipeline inspection coverage.
 inline constexpr double kDefaultPipelineBinResolutionM = 0.10;
+
 inline constexpr double kDefaultPipelineRadiusM = 0.25;
 inline constexpr double kDefaultMinimumGapLengthM = 0.15;
 
@@ -40,9 +41,9 @@ struct PipePoint3D
     z(pz)
   {}
 
-  /// @brief Implicit converting constructor from Point3D for stack-wide interoperability.
+  /// @brief Converts a generic 3D point into the pipeline tracker coordinate type.
   /// @param pt Spatial 3D point.
-  PipePoint3D(const Point3D &pt)
+  explicit PipePoint3D(const Point3D &pt)
   : x(pt.x),
     y(pt.y),
     z(pt.z)
@@ -607,4 +608,4 @@ private:
 
 }  // namespace subsea_inspection
 
-#endif  // SUBSEA_INSPECTION_PIPELINE_TRACKER_HPP_
+#endif  // SUBSEA_INSPECTION__PIPELINE_TRACKER_HPP_

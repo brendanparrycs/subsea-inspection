@@ -5,6 +5,7 @@ log/
 logs/
 *.BIN
 LASTLOG.TXT
+*.bin
 
 # IDE
 .vscode/
@@ -14,14 +15,15 @@ LASTLOG.TXT
 __pycache__/
 *.py[cod]
 *$py.class
+.ruff_cache/
+.pytest_cache/
 
 # Temporary files
 *.swp
 *~
-eeprom.bin
 
-# Local Docs
-docs/
+# Local documentation
+/docs/
 
 # Survey Reports
 reports/
