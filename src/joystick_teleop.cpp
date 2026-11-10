@@ -31,6 +31,7 @@ public:
         this->declare_parameter<double>("max_linear_speed", 0.8);
         this->declare_parameter<double>("max_heave_speed", 0.5);
         this->declare_parameter<double>("max_angular_speed", 0.8);
+        this->declare_parameter<double>("joy_timeout", 0.5);
 
         // Retrieve parameter values
         axis_surge_ = this->get_parameter("axis_surge").as_int();
@@ -47,6 +48,7 @@ public:
         max_linear_speed_ = this->get_parameter("max_linear_speed").as_double();
         max_heave_speed_ = this->get_parameter("max_heave_speed").as_double();
         max_angular_speed_ = this->get_parameter("max_angular_speed").as_double();
+        joy_timeout_sec_ = this->get_parameter("joy_timeout").as_double();
 
         // Subscribe to /joy topic from joy_node
         joy_subscription_ = this->create_subscription<sensor_msgs::msg::Joy>(
@@ -93,10 +95,18 @@ private:
         current_twist_.linear.y = get_axis_value(msg, axis_sway_, invert_sway_) * max_linear_speed_;
         current_twist_.linear.z = get_axis_value(msg, axis_heave_, invert_heave_) * max_heave_speed_;
         current_twist_.angular.z = get_axis_value(msg, axis_yaw_, invert_yaw_) * max_angular_speed_;
+        last_joy_message_time_ = std::chrono::steady_clock::now();
+        has_received_joy_message_ = true;
     }
 
     /// @brief 10Hz periodic timer callback that publishes current velocity commands on /cmd_vel.
     void publish_twist() {
+        const auto elapsed = std::chrono::steady_clock::now() - last_joy_message_time_;
+        if (!has_received_joy_message_ || elapsed >= std::chrono::duration<double>(joy_timeout_sec_)) {
+            cmd_vel_publisher_->publish(geometry_msgs::msg::Twist());
+            return;
+        }
+
         cmd_vel_publisher_->publish(current_twist_);
     }
 
@@ -135,6 +145,15 @@ private:
 
     /// @brief Maximum yaw turn rate in rad/s.
     double max_angular_speed_;
+
+    /// @brief Maximum age in seconds allowed for joystick input before commands are stopped.
+    double joy_timeout_sec_;
+
+    /// @brief Wall-clock time when the most recent joystick message was received.
+    std::chrono::steady_clock::time_point last_joy_message_time_{};
+
+    /// @brief Whether at least one joystick message has been received.
+    bool has_received_joy_message_{false};
 
     /// @brief Current velocity command published continuously to satisfy safety watchdog.
     geometry_msgs::msg::Twist current_twist_;
