@@ -12,7 +12,6 @@ import argparse
 import math
 import os
 import random
-import sys
 from typing import Dict, List, Tuple
 
 DEFAULT_NUM_SEGMENTS = 4
@@ -36,7 +35,7 @@ def generate_pipeline_geometry(
     max_length: float = DEFAULT_MAX_SEGMENT_LENGTH_M,
     max_bend_deg: float = DEFAULT_MAX_BEND_DEG,
     start_pos: Tuple[float, float, float] = DEFAULT_PIPE_START_M,
-    rng: random.Random = None
+    rng: random.Random = None,
 ) -> List[Tuple[float, float, float]]:
     """
     Computes 3D vertices for a continuous subsea pipeline with randomized bends and gentle bathymetry slopes.
@@ -82,7 +81,7 @@ def generate_random_obstacles(
     vertices: List[Tuple[float, float, float]],
     num_obstacles: int = DEFAULT_NUM_OBSTACLES,
     pipe_radius: float = DEFAULT_PIPE_RADIUS_M,
-    rng: random.Random = None
+    rng: random.Random = None,
 ) -> List[Dict[str, float]]:
     """
     Places obstacles randomly along the pipeline corridor.
@@ -129,15 +128,17 @@ def generate_random_obstacles(
         obs_x += -math.sin(heading) * side_offset
         obs_y += math.cos(heading) * side_offset
 
-        obstacles.append({
-            "name": f"pipeline_obstacle_{idx + 1}",
-            "x": round(obs_x, 3),
-            "y": round(obs_y, 3),
-            "z": round(obs_z, 3),
-            "size_x": size_x,
-            "size_y": size_y,
-            "size_z": size_z,
-        })
+        obstacles.append(
+            {
+                'name': f'pipeline_obstacle_{idx + 1}',
+                'x': round(obs_x, 3),
+                'y': round(obs_y, 3),
+                'z': round(obs_z, 3),
+                'size_x': size_x,
+                'size_y': size_y,
+                'size_z': size_z,
+            }
+        )
 
     return obstacles
 
@@ -145,7 +146,7 @@ def generate_random_obstacles(
 def generate_pipeline_sdf(
     vertices: List[Tuple[float, float, float]],
     pipe_radius: float = DEFAULT_PIPE_RADIUS_M,
-    obstacles: List[Dict[str, float]] = None
+    obstacles: List[Dict[str, float]] = None,
 ) -> str:
     """
     Generates Gazebo Simulation Description Format (SDF v1.8) string for the 3D pipeline model.
@@ -182,85 +183,91 @@ def generate_pipeline_sdf(
         yaw = math.atan2(dy, dx)
         roll = 0.0
 
-        sdf_lines.extend([
-            f'    <!-- Pipeline Segment {i + 1} -->',
-            f'    <link name="segment_{i + 1}">',
-            f'      <pose>{mid_x:.3f} {mid_y:.3f} {mid_z:.3f} {roll:.4f} {pitch:.4f} {yaw:.4f}</pose>',
-            '      <collision name="col">',
-            '        <geometry>',
-            f'          <cylinder><radius>{pipe_radius:.3f}</radius><length>{length:.3f}</length></cylinder>',
-            '        </geometry>',
-            '      </collision>',
-            '      <visual name="vis">',
-            '        <geometry>',
-            f'          <cylinder><radius>{pipe_radius:.3f}</radius><length>{length:.3f}</length></cylinder>',
-            '        </geometry>',
-            '        <material>',
-            '          <ambient>0.85 0.65 0.10 1.0</ambient>',
-            '          <diffuse>0.85 0.65 0.10 1.0</diffuse>',
-            '          <specular>0.3 0.3 0.3 1.0</specular>',
-            '        </material>',
-            '      </visual>',
-            '    </link>',
-        ])
+        sdf_lines.extend(
+            [
+                f'    <!-- Pipeline Segment {i + 1} -->',
+                f'    <link name="segment_{i + 1}">',
+                f'      <pose>{mid_x:.3f} {mid_y:.3f} {mid_z:.3f} {roll:.4f} {pitch:.4f} {yaw:.4f}</pose>',
+                '      <collision name="col">',
+                '        <geometry>',
+                f'          <cylinder><radius>{pipe_radius:.3f}</radius><length>{length:.3f}</length></cylinder>',
+                '        </geometry>',
+                '      </collision>',
+                '      <visual name="vis">',
+                '        <geometry>',
+                f'          <cylinder><radius>{pipe_radius:.3f}</radius><length>{length:.3f}</length></cylinder>',
+                '        </geometry>',
+                '        <material>',
+                '          <ambient>0.85 0.65 0.10 1.0</ambient>',
+                '          <diffuse>0.85 0.65 0.10 1.0</diffuse>',
+                '          <specular>0.3 0.3 0.3 1.0</specular>',
+                '        </material>',
+                '      </visual>',
+                '    </link>',
+            ]
+        )
 
     # 2. Joint Flange Collars and Concrete Support Saddles at each vertex
     for i, pt in enumerate(vertices):
         # Joint Flange
-        sdf_lines.extend([
-            f'    <!-- Joint Flange {i + 1} -->',
-            f'    <link name="flange_{i + 1}">',
-            f'      <pose>{pt[0]:.3f} {pt[1]:.3f} {pt[2]:.3f} 0 0 0</pose>',
-            '      <collision name="col">',
-            '        <geometry>',
-            f'          <sphere><radius>{pipe_radius * 1.15:.3f}</radius></sphere>',
-            '        </geometry>',
-            '      </collision>',
-            '      <visual name="vis">',
-            '        <geometry>',
-            f'          <sphere><radius>{pipe_radius * 1.15:.3f}</radius></sphere>',
-            '        </geometry>',
-            '        <material>',
-            '          <ambient>0.25 0.28 0.32 1.0</ambient>',
-            '          <diffuse>0.30 0.35 0.40 1.0</diffuse>',
-            '        </material>',
-            '      </visual>',
-            '    </link>',
-            f'    <!-- Concrete Support Saddle {i + 1} -->',
-            f'    <link name="support_{i + 1}">',
-            f'      <pose>{pt[0]:.3f} {pt[1]:.3f} {pt[2] - pipe_radius - 0.10:.3f} 0 0 0</pose>',
-            '      <collision name="col">',
-            '        <geometry><box><size>0.6 0.6 0.2</size></box></geometry>',
-            '      </collision>',
-            '      <visual name="vis">',
-            '        <geometry><box><size>0.6 0.6 0.2</size></box></geometry>',
-            '        <material>',
-            '          <ambient>0.45 0.45 0.45 1.0</ambient>',
-            '          <diffuse>0.50 0.50 0.50 1.0</diffuse>',
-            '        </material>',
-            '      </visual>',
-            '    </link>',
-        ])
+        sdf_lines.extend(
+            [
+                f'    <!-- Joint Flange {i + 1} -->',
+                f'    <link name="flange_{i + 1}">',
+                f'      <pose>{pt[0]:.3f} {pt[1]:.3f} {pt[2]:.3f} 0 0 0</pose>',
+                '      <collision name="col">',
+                '        <geometry>',
+                f'          <sphere><radius>{pipe_radius * 1.15:.3f}</radius></sphere>',
+                '        </geometry>',
+                '      </collision>',
+                '      <visual name="vis">',
+                '        <geometry>',
+                f'          <sphere><radius>{pipe_radius * 1.15:.3f}</radius></sphere>',
+                '        </geometry>',
+                '        <material>',
+                '          <ambient>0.25 0.28 0.32 1.0</ambient>',
+                '          <diffuse>0.30 0.35 0.40 1.0</diffuse>',
+                '        </material>',
+                '      </visual>',
+                '    </link>',
+                f'    <!-- Concrete Support Saddle {i + 1} -->',
+                f'    <link name="support_{i + 1}">',
+                f'      <pose>{pt[0]:.3f} {pt[1]:.3f} {pt[2] - pipe_radius - 0.10:.3f} 0 0 0</pose>',
+                '      <collision name="col">',
+                '        <geometry><box><size>0.6 0.6 0.2</size></box></geometry>',
+                '      </collision>',
+                '      <visual name="vis">',
+                '        <geometry><box><size>0.6 0.6 0.2</size></box></geometry>',
+                '        <material>',
+                '          <ambient>0.45 0.45 0.45 1.0</ambient>',
+                '          <diffuse>0.50 0.50 0.50 1.0</diffuse>',
+                '        </material>',
+                '      </visual>',
+                '    </link>',
+            ]
+        )
 
     # 3. Embedded Obstacles (if any)
     if obstacles:
         for obs in obstacles:
-            sdf_lines.extend([
-                f'    <!-- Obstacle: {obs["name"]} -->',
-                f'    <link name="{obs["name"]}">',
-                f'      <pose>{obs["x"]:.3f} {obs["y"]:.3f} {obs["z"]:.3f} 0 0 0</pose>',
-                '      <collision name="col">',
-                f'        <geometry><box><size>{obs["size_x"]} {obs["size_y"]} {obs["size_z"]}</size></box></geometry>',
-                '      </collision>',
-                '      <visual name="vis">',
-                f'        <geometry><box><size>{obs["size_x"]} {obs["size_y"]} {obs["size_z"]}</size></box></geometry>',
-                '        <material>',
-                '          <ambient>0.90 0.15 0.15 1.0</ambient>',
-                '          <diffuse>0.90 0.15 0.15 1.0</diffuse>',
-                '        </material>',
-                '      </visual>',
-                '    </link>',
-            ])
+            sdf_lines.extend(
+                [
+                    f'    <!-- Obstacle: {obs["name"]} -->',
+                    f'    <link name="{obs["name"]}">',
+                    f'      <pose>{obs["x"]:.3f} {obs["y"]:.3f} {obs["z"]:.3f} 0 0 0</pose>',
+                    '      <collision name="col">',
+                    f'        <geometry><box><size>{obs["size_x"]} {obs["size_y"]} {obs["size_z"]}</size></box></geometry>',
+                    '      </collision>',
+                    '      <visual name="vis">',
+                    f'        <geometry><box><size>{obs["size_x"]} {obs["size_y"]} {obs["size_z"]}</size></box></geometry>',
+                    '        <material>',
+                    '          <ambient>0.90 0.15 0.15 1.0</ambient>',
+                    '          <diffuse>0.90 0.15 0.15 1.0</diffuse>',
+                    '        </material>',
+                    '      </visual>',
+                    '    </link>',
+                ]
+            )
 
     sdf_lines.extend(['  </model>', '</sdf>', ''])
     return '\n'.join(sdf_lines)
@@ -271,7 +278,7 @@ def generate_mission_yaml(
     standoff_height: float = DEFAULT_STANDOFF_HEIGHT_M,
     acceptance_radius: float = DEFAULT_ACCEPTANCE_RADIUS_M,
     waypoint_spacing: float = DEFAULT_WAYPOINT_SPACING_M,
-    seed_used: int = None
+    seed_used: int = None,
 ) -> str:
     """
     Generates mission YAML string with dense waypoints tracking directly above the pipeline centerline.
@@ -315,31 +322,71 @@ def generate_mission_yaml(
     ]
 
     for idx, (wx, wy, wz) in enumerate(dense_waypoints):
-        wp_name = "pipe_entry" if idx == 0 else ("survey_terminus" if idx == len(dense_waypoints) - 1 else f"track_{idx}")
+        wp_name = (
+            'pipe_entry'
+            if idx == 0
+            else ('survey_terminus' if idx == len(dense_waypoints) - 1 else f'track_{idx}')
+        )
         dwell = ENDPOINT_DWELL_SEC if (idx == 0 or idx == len(dense_waypoints) - 1) else 0.0
 
-        yaml_lines.extend([
-            f'    - name: "{wp_name}"',
-            f'      x: {wx:.2f}',
-            f'      y: {wy:.2f}',
-            f'      z: {wz:.2f}',
-            f'      dwell_sec: {dwell:.1f}',
-            '',
-        ])
+        yaml_lines.extend(
+            [
+                f'    - name: "{wp_name}"',
+                f'      x: {wx:.2f}',
+                f'      y: {wy:.2f}',
+                f'      z: {wz:.2f}',
+                f'      dwell_sec: {dwell:.1f}',
+                '',
+            ]
+        )
 
     return '\n'.join(yaml_lines)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Procedural Subsea Pipeline Scenario Generator")
-    parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility (omit for true random)")
-    parser.add_argument("--num-segments", type=int, default=DEFAULT_NUM_SEGMENTS, help="Number of pipe segments (3-6)")
-    parser.add_argument("--num-obstacles", type=int, default=DEFAULT_NUM_OBSTACLES, help="Number of obstacles on pipeline path (0-3)")
-    parser.add_argument("--standoff-height", type=float, default=DEFAULT_STANDOFF_HEIGHT_M, help="Inspection standoff altitude above pipe (m)")
-    parser.add_argument("--acceptance-radius", type=float, default=DEFAULT_ACCEPTANCE_RADIUS_M, help="Arrival tolerance radius (m)")
-    parser.add_argument("--waypoint-spacing", type=float, default=DEFAULT_WAYPOINT_SPACING_M, help="Spacing between intermediate tracking waypoints (m)")
-    parser.add_argument("--output-sdf", type=str, default=None, help="Path to write pipeline model.sdf")
-    parser.add_argument("--output-yaml", type=str, default=None, help="Path to write pipeline_mission.yaml")
+    parser = argparse.ArgumentParser(description='Procedural Subsea Pipeline Scenario Generator')
+    parser.add_argument(
+        '--seed',
+        type=int,
+        default=None,
+        help='Random seed for reproducibility (omit for true random)',
+    )
+    parser.add_argument(
+        '--num-segments',
+        type=int,
+        default=DEFAULT_NUM_SEGMENTS,
+        help='Number of pipe segments (3-6)',
+    )
+    parser.add_argument(
+        '--num-obstacles',
+        type=int,
+        default=DEFAULT_NUM_OBSTACLES,
+        help='Number of obstacles on pipeline path (0-3)',
+    )
+    parser.add_argument(
+        '--standoff-height',
+        type=float,
+        default=DEFAULT_STANDOFF_HEIGHT_M,
+        help='Inspection standoff altitude above pipe (m)',
+    )
+    parser.add_argument(
+        '--acceptance-radius',
+        type=float,
+        default=DEFAULT_ACCEPTANCE_RADIUS_M,
+        help='Arrival tolerance radius (m)',
+    )
+    parser.add_argument(
+        '--waypoint-spacing',
+        type=float,
+        default=DEFAULT_WAYPOINT_SPACING_M,
+        help='Spacing between intermediate tracking waypoints (m)',
+    )
+    parser.add_argument(
+        '--output-sdf', type=str, default=None, help='Path to write pipeline model.sdf'
+    )
+    parser.add_argument(
+        '--output-yaml', type=str, default=None, help='Path to write pipeline_mission.yaml'
+    )
     args = parser.parse_args()
 
     # Determine seed
@@ -349,44 +396,45 @@ def main():
         seed = args.seed
 
     rng = random.Random(seed)
-    print(f"[Scenario Generator] Initializing procedural pipeline (Seed: {seed})")
+    print(f'[Scenario Generator] Initializing procedural pipeline (Seed: {seed})')
 
     # Resolve paths: prefer writing to source directory and syncing to install share
     try:
         from ament_index_python.packages import get_package_share_directory
-        share_dir = get_package_share_directory("subsea_inspection")
+
+        share_dir = get_package_share_directory('subsea_inspection')
     except Exception:
         share_dir = None
 
-    src_dir = os.path.expanduser("~/posim_ws/src/subsea_inspection")
+    src_dir = os.path.expanduser('~/posim_ws/src/subsea_inspection')
     if not os.path.exists(src_dir):
         src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    output_sdf = args.output_sdf or os.path.join(src_dir, "models", "pipeline", "model.sdf")
-    output_yaml = args.output_yaml or os.path.join(src_dir, "config", "pipeline_mission.yaml")
+    output_sdf = args.output_sdf or os.path.join(src_dir, 'models', 'pipeline', 'model.sdf')
+    output_yaml = args.output_yaml or os.path.join(src_dir, 'config', 'pipeline_mission.yaml')
 
     # Generate geometry and obstacles
     vertices = generate_pipeline_geometry(
-        num_segments=args.num_segments,
-        start_pos=DEFAULT_PIPE_START_M,
-        rng=rng
+        num_segments=args.num_segments, start_pos=DEFAULT_PIPE_START_M, rng=rng
     )
 
     obstacles = generate_random_obstacles(
         vertices=vertices,
         num_obstacles=args.num_obstacles,
         pipe_radius=DEFAULT_PIPE_RADIUS_M,
-        rng=rng
+        rng=rng,
     )
 
     # Generate SDF and YAML contents
-    sdf_content = generate_pipeline_sdf(vertices, pipe_radius=DEFAULT_PIPE_RADIUS_M, obstacles=obstacles)
+    sdf_content = generate_pipeline_sdf(
+        vertices, pipe_radius=DEFAULT_PIPE_RADIUS_M, obstacles=obstacles
+    )
     yaml_content = generate_mission_yaml(
         vertices,
         standoff_height=args.standoff_height,
         acceptance_radius=args.acceptance_radius,
         waypoint_spacing=args.waypoint_spacing,
-        seed_used=seed
+        seed_used=seed,
     )
 
     # Write files to target paths
@@ -394,29 +442,31 @@ def main():
     target_yamls = [output_yaml]
 
     if args.output_sdf is None and share_dir and os.path.exists(share_dir):
-        target_sdfs.append(os.path.join(share_dir, "models", "pipeline", "model.sdf"))
+        target_sdfs.append(os.path.join(share_dir, 'models', 'pipeline', 'model.sdf'))
 
     if args.output_yaml is None and share_dir and os.path.exists(share_dir):
-        target_yamls.append(os.path.join(share_dir, "config", "pipeline_mission.yaml"))
+        target_yamls.append(os.path.join(share_dir, 'config', 'pipeline_mission.yaml'))
 
     for p in target_sdfs:
         os.makedirs(os.path.dirname(p), exist_ok=True)
-        with open(p, "w") as f:
+        with open(p, 'w') as f:
             f.write(sdf_content)
-        print(f"[Scenario Generator] Wrote 3D pipeline SDF ({len(vertices) - 1} segments) -> {p}")
+        print(f'[Scenario Generator] Wrote 3D pipeline SDF ({len(vertices) - 1} segments) -> {p}')
 
     num_waypoints = yaml_content.count('- name:')
     for p in target_yamls:
         os.makedirs(os.path.dirname(p), exist_ok=True)
-        with open(p, "w") as f:
+        with open(p, 'w') as f:
             f.write(yaml_content)
-        print(f"[Scenario Generator] Wrote mission YAML ({num_waypoints} waypoints) -> {p}")
+        print(f'[Scenario Generator] Wrote mission YAML ({num_waypoints} waypoints) -> {p}')
 
     if obstacles:
-        print(f"[Scenario Generator] Placed {len(obstacles)} randomized obstacle(s):")
+        print(f'[Scenario Generator] Placed {len(obstacles)} randomized obstacle(s):')
         for obs in obstacles:
-            print(f"  - {obs['name']}: Pos [{obs['x']}, {obs['y']}, {obs['z']}] Size [{obs['size_x']}x{obs['size_y']}x{obs['size_z']}]m")
+            print(
+                f'  - {obs["name"]}: Pos [{obs["x"]}, {obs["y"]}, {obs["z"]}] Size [{obs["size_x"]}x{obs["size_y"]}x{obs["size_z"]}]m'
+            )
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
