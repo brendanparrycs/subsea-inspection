@@ -16,6 +16,10 @@ using subsea_inspection::RoiBoundingBox;
 using subsea_inspection::FilterResult;
 using subsea_inspection::filter_corridor;
 
+namespace {
+constexpr double kObstacleMarkerDiameterM = 0.25;
+}  // namespace
+
 /// @brief ROS 2 node subscribe to live 3D depth point clouds, filtering for a forward
 /// safety corridor, and publishing obstacle alerts and RViz visualization markers.
 class ObstacleDetector: public rclcpp::Node {
@@ -23,17 +27,21 @@ public:
     ObstacleDetector(): 
         Node("obstacle_detector"), 
         point_cloud_topic_("/model/bluerov2_heavy/depth_camera/points"),
-        detection_threshold_(1.50)
+        detection_threshold_(subsea_inspection::kDefaultDetectionThresholdM),
+        closest_point_topic_("/obstacle/closest_point")
     {
+        const RoiBoundingBox default_roi{};
+
         // Declare and get parameters
         this->declare_parameter<std::string>("point_cloud_topic", point_cloud_topic_);
         this->declare_parameter<double>("detection_threshold", detection_threshold_);
-        this->declare_parameter<double>("min_x", 0.35);
-        this->declare_parameter<double>("max_x", 3.00);
-        this->declare_parameter<double>("min_y", -0.45);
-        this->declare_parameter<double>("max_y", 0.45);
-        this->declare_parameter<double>("min_z", -0.20);
-        this->declare_parameter<double>("max_z", 0.30);
+        this->declare_parameter<double>("min_x", default_roi.min_x);
+        this->declare_parameter<double>("max_x", default_roi.max_x);
+        this->declare_parameter<double>("min_y", default_roi.min_y);
+        this->declare_parameter<double>("max_y", default_roi.max_y);
+        this->declare_parameter<double>("min_z", default_roi.min_z);
+        this->declare_parameter<double>("max_z", default_roi.max_z);
+        this->declare_parameter<std::string>("closest_point_topic", closest_point_topic_);
 
         point_cloud_topic_ = this->get_parameter("point_cloud_topic").as_string();
         detection_threshold_ = this->get_parameter("detection_threshold").as_double();
@@ -43,6 +51,7 @@ public:
         roi_.max_y = this->get_parameter("max_y").as_double();
         roi_.min_z = this->get_parameter("min_z").as_double();
         roi_.max_z = this->get_parameter("max_z").as_double();
+        closest_point_topic_ = this->get_parameter("closest_point_topic").as_string();
 
         // Standard sensor data QoS profile matching Gazebo bridge publisher
         rclcpp::QoS qos_profile(5);
@@ -51,7 +60,7 @@ public:
 
         // Publishers for neareset obstacle position and RViz visualization markers
         closest_point_publisher_ = this->create_publisher<geometry_msgs::msg::PointStamped>(
-            "/obstacle/closest_point",
+            closest_point_topic_,
             10
         );
 
@@ -182,9 +191,9 @@ private:
             obstacle_marker.pose.position.z = result.closest_point.z;
             obstacle_marker.pose.orientation.w = 1.0;
 
-            obstacle_marker.scale.x = 0.25;
-            obstacle_marker.scale.y = 0.25;
-            obstacle_marker.scale.z = 0.25;
+            obstacle_marker.scale.x = kObstacleMarkerDiameterM;
+            obstacle_marker.scale.y = kObstacleMarkerDiameterM;
+            obstacle_marker.scale.z = kObstacleMarkerDiameterM;
 
             obstacle_marker.color.r = 1.0f;
             obstacle_marker.color.g = 0.2f;
@@ -203,6 +212,9 @@ private:
 
     /// @brief Proximity threshold in meters to trigger an obstacle detection.
     double detection_threshold_;
+
+    /// @brief Topic used to publish the nearest obstacle point in the safety corridor.
+    std::string closest_point_topic_;
 
     /// @brief 3D safety corridor bounding box in the vehicle coordinate frame.
     RoiBoundingBox roi_;

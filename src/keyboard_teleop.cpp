@@ -1,30 +1,44 @@
 #include <chrono>
 #include <iostream>
 #include <memory>
+#include <string>
 #include <termios.h>
 #include <unistd.h>
 
 #include "geometry_msgs/msg/twist.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-using namespace std::chrono_literals;
+namespace {
+constexpr double kDefaultLinearSpeedMps = 0.5;
+constexpr double kDefaultHeaveSpeedMps = 0.3;
+constexpr double kDefaultAngularSpeedRadps = 0.5;
+constexpr std::chrono::milliseconds kPollPeriod{100};
+constexpr auto kDefaultCmdVelTopic = "/cmd_vel";
+}  // namespace
 
 /// @brief Interactive terminal keyboard teleoperation node for BlueROV2 Heavy.
 class KeyboardTeleop: public rclcpp::Node {
 public:
     /// @brief Initializes node, sets terminal to raw non-blocking mode, declares parameters, and starts control loop.
-    KeyboardTeleop(): Node("keyboard_teleop"), linear_speed_(0.5), heave_speed_(0.3), angular_speed_(0.5) {
+    KeyboardTeleop():
+        Node("keyboard_teleop"),
+        linear_speed_(kDefaultLinearSpeedMps),
+        heave_speed_(kDefaultHeaveSpeedMps),
+        angular_speed_(kDefaultAngularSpeedRadps)
+    {
         // Declare and get parameters
-        this->declare_parameter<double>("linear_speed", 0.5);
-        this->declare_parameter<double>("heave_speed", 0.3);
-        this->declare_parameter<double>("angular_speed", 0.5);
+        this->declare_parameter<double>("linear_speed", kDefaultLinearSpeedMps);
+        this->declare_parameter<double>("heave_speed", kDefaultHeaveSpeedMps);
+        this->declare_parameter<double>("angular_speed", kDefaultAngularSpeedRadps);
+        this->declare_parameter<std::string>("cmd_vel_topic", kDefaultCmdVelTopic);
 
         linear_speed_ = this->get_parameter("linear_speed").as_double();
         heave_speed_ = this->get_parameter("heave_speed").as_double();
         angular_speed_ = this->get_parameter("angular_speed").as_double();
+        const auto cmd_vel_topic = this->get_parameter("cmd_vel_topic").as_string();
 
         // Publisher for velocity commands
-        cmd_vel_publisher_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
+        cmd_vel_publisher_ = this->create_publisher<geometry_msgs::msg::Twist>(cmd_vel_topic, 10);
 
         // Put terminal in raw non-blocking mode
         tcgetattr(STDIN_FILENO, &orig_termios_);
@@ -37,7 +51,7 @@ public:
         print_instructions();
 
         // 100ms (10Hz) loop to poll keystrokes and publish cmd_vel to satisfy motion_controller watchdog
-        timer_ = this->create_wall_timer(100ms, std::bind(&KeyboardTeleop::spin_once, this));
+        timer_ = this->create_wall_timer(kPollPeriod, std::bind(&KeyboardTeleop::spin_once, this));
         RCLCPP_INFO(this->get_logger(), "KeyboardTeleop initialized. Ready for keyboard input.");
     }
 

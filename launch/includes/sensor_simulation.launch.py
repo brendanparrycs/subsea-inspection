@@ -9,6 +9,13 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Pyth
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
+VEHICLE_SPAWN_X_M = 0.0
+VEHICLE_SPAWN_Y_M = 0.0
+VEHICLE_SPAWN_Z_M = -2.0
+VEHICLE_SPAWN_ROLL_RAD = 0.0
+VEHICLE_SPAWN_PITCH_RAD = 0.0
+VEHICLE_SPAWN_YAW_RAD = 0.0
+
 
 def generate_launch_description():
     start_sim_arg = DeclareLaunchArgument(
@@ -63,12 +70,12 @@ def generate_launch_description():
         arguments=[
             "-name", "bluerov2_heavy",
             "-file", vehicle_model,
-            "-x", "0.0",
-            "-y", "0.0",
-            "-z", "-2.0",
-            "-R", "0.0",
-            "-P", "0.0",
-            "-Y", "0.0",
+            "-x", str(VEHICLE_SPAWN_X_M),
+            "-y", str(VEHICLE_SPAWN_Y_M),
+            "-z", str(VEHICLE_SPAWN_Z_M),
+            "-R", str(VEHICLE_SPAWN_ROLL_RAD),
+            "-P", str(VEHICLE_SPAWN_PITCH_RAD),
+            "-Y", str(VEHICLE_SPAWN_YAW_RAD),
         ],
         output="screen",
         parameters=[{"use_sim_time": True}],

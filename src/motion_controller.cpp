@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <memory>
 #include <string>
 
@@ -10,7 +11,23 @@
 #include "mavros_msgs/srv/command_bool.hpp"
 #include "mavros_msgs/srv/set_mode.hpp"
 
-using namespace std::chrono_literals;
+namespace {
+constexpr double kDefaultLinearScale = 500.0;
+constexpr double kDefaultAngularScale = 500.0;
+constexpr double kDefaultCmdVelTimeoutSec = 0.5;
+constexpr double kManualControlAxisLimit = 1000.0;
+constexpr double kManualControlVerticalLimit = 500.0;
+constexpr double kManualControlNeutralDepth = 500.0;
+constexpr std::chrono::milliseconds kControlPeriod{50};
+constexpr std::chrono::milliseconds kLogThrottlePeriod{2000};
+constexpr std::size_t kQueueDepth = 10;
+constexpr std::size_t kStateQueueDepth = 1;
+constexpr auto kMavrosStateTopic = "/mavros/state";
+constexpr auto kManualControlTopic = "/mavros/manual_control/send";
+constexpr auto kSetModeService = "/mavros/set_mode";
+constexpr auto kArmingService = "/mavros/cmd/arming";
+constexpr auto kDefaultCmdVelTopic = "/cmd_vel";
+}  // namespace
 
 /// @brief ROS 2 node that controls BlueROV2 Heavy motion via MAVROS services and topics.
 class MotionController: public rclcpp::Node {
@@ -18,44 +35,46 @@ public:
     /// @brief Initializes node, sets up MAVROS subscribers, service clients, and control loop.
     MotionController(): Node("motion_controller"), last_cmd_vel_time_(0, 0, RCL_ROS_TIME) {
         // Declare and get parameters
-        this->declare_parameter<double>("linear_scale", 500.0);
-        this->declare_parameter<double>("angular_scale", 500.0);
-        this->declare_parameter<double>("cmd_vel_timeout", 0.5);
+        this->declare_parameter<double>("linear_scale", kDefaultLinearScale);
+        this->declare_parameter<double>("angular_scale", kDefaultAngularScale);
+        this->declare_parameter<double>("cmd_vel_timeout", kDefaultCmdVelTimeoutSec);
+        this->declare_parameter<std::string>("cmd_vel_topic", kDefaultCmdVelTopic);
 
         linear_scale_ = this->get_parameter("linear_scale").as_double();
         angular_scale_ = this->get_parameter("angular_scale").as_double();
         cmd_vel_timeout_sec_ = this->get_parameter("cmd_vel_timeout").as_double();
+        const auto cmd_vel_topic = this->get_parameter("cmd_vel_topic").as_string();
 
         // QoS profile matching MAVROS state publisher
-        rclcpp::QoS state_qos(1);
+        rclcpp::QoS state_qos(kStateQueueDepth);
         state_qos.reliable();
         state_qos.transient_local();
 
         // Subscribe to MAVROS state
         state_subscription_ = this->create_subscription<mavros_msgs::msg::State>(
-            "/mavros/state",
+            kMavrosStateTopic,
             state_qos,
             std::bind(&MotionController::state_callback, this, std::placeholders::_1)
         );
 
         // Subscribe to cmd_vel
         cmd_vel_subscription_ = this->create_subscription<geometry_msgs::msg::Twist>(
-            "/cmd_vel",
-            10,
+            cmd_vel_topic,
+            kQueueDepth,
             std::bind(&MotionController::cmd_vel_callback, this, std::placeholders::_1)
         );
 
         // Motion command publisher
         manual_control_publisher_ = this->create_publisher<mavros_msgs::msg::ManualControl>(
-            "/mavros/manual_control/send",
-            10
+            kManualControlTopic,
+            kQueueDepth
         );
 
         // Service clients for flight mode and motor arming
-        set_mode_client_ = this->create_client<mavros_msgs::srv::SetMode>("/mavros/set_mode");
-        arming_client_ = this->create_client<mavros_msgs::srv::CommandBool>("/mavros/cmd/arming");
+        set_mode_client_ = this->create_client<mavros_msgs::srv::SetMode>(kSetModeService);
+        arming_client_ = this->create_client<mavros_msgs::srv::CommandBool>(kArmingService);
 
-        timer_ = this->create_wall_timer(50ms, std::bind(&MotionController::control_loop, this));
+        timer_ = this->create_wall_timer(kControlPeriod, std::bind(&MotionController::control_loop, this));
         RCLCPP_INFO(this->get_logger(), "MotionController initialized. Awaiting MAVROS connection...");
     }
 
@@ -77,20 +96,20 @@ private:
     void control_loop() {
         // Wait for connection to ArduSub
         if (!current_state_.connected) {
-            RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "Waiting for ArduSub connection...");
+            RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), kLogThrottlePeriod.count(), "Waiting for ArduSub connection...");
             return;
         }
 
         // Ensure vehicle is in ALT_HOLD mode
         if (current_state_.mode != "ALT_HOLD") {
-            RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "Setting mode to ALT_HOLD...");
+            RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), kLogThrottlePeriod.count(), "Setting mode to ALT_HOLD...");
             set_mode("ALT_HOLD");
             return;
         }
 
         // Ensure vehicle thrusters are armed
         if (!current_state_.armed) {
-            RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "Arming thrusters...");
+            RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), kLogThrottlePeriod.count(), "Arming thrusters...");
             set_arm(true);
             return;
         }
@@ -104,10 +123,10 @@ private:
         float target_yaw = cmd_vel_active ? static_cast<float>(target_twist_.angular.z) : 0.0f;
 
         // Map to MAVROS range [-1000, 1000]; neutral depth is 500
-        float x = static_cast<float>(std::clamp(target_surge * linear_scale_, -1000.0, 1000.0));
-        float y = static_cast<float>(std::clamp(target_sway * linear_scale_, -1000.0, 1000.0));
-        float z = static_cast<float>(500.0 + std::clamp(target_heave * linear_scale_, -500.0, 500.0));
-        float r = static_cast<float>(std::clamp(-target_yaw * angular_scale_, -1000.0, 1000.0));
+        float x = static_cast<float>(std::clamp(target_surge * linear_scale_, -kManualControlAxisLimit, kManualControlAxisLimit));
+        float y = static_cast<float>(std::clamp(target_sway * linear_scale_, -kManualControlAxisLimit, kManualControlAxisLimit));
+        float z = static_cast<float>(kManualControlNeutralDepth + std::clamp(target_heave * linear_scale_, -kManualControlVerticalLimit, kManualControlVerticalLimit));
+        float r = static_cast<float>(std::clamp(-target_yaw * angular_scale_, -kManualControlAxisLimit, kManualControlAxisLimit));
 
         send_control(x, y, z, r);
     }

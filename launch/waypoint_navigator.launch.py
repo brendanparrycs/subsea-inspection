@@ -58,6 +58,16 @@ def generate_launch_description():
     target_y_choice = LaunchConfiguration("target_y")
     target_z_choice = LaunchConfiguration("target_z")
     acceptance_radius_choice = LaunchConfiguration("acceptance_radius")
+    common_topics_file = PathJoinSubstitution([
+        FindPackageShare("subsea_inspection"),
+        "config",
+        "common_topics.yaml",
+    ])
+    navigation_config_file = PathJoinSubstitution([
+        FindPackageShare("subsea_inspection"),
+        "config",
+        "navigation.yaml",
+    ])
 
     # Shared POSIM demo simulation and core vehicle nodes.
     posim_simulation = IncludeLaunchDescription(
@@ -89,13 +99,17 @@ def generate_launch_description():
         executable="waypoint_navigator",
         name="waypoint_navigator",
         output="screen",
-        parameters=[{
-            "use_sim_time": True,
-            "target_x": target_x_choice,
-            "target_y": target_y_choice,
-            "target_z": target_z_choice,
-            "acceptance_radius": acceptance_radius_choice
-        }]
+        parameters=[
+            common_topics_file,
+            navigation_config_file,
+            {
+                "use_sim_time": True,
+                "target_x": target_x_choice,
+                "target_y": target_y_choice,
+                "target_z": target_z_choice,
+                "acceptance_radius": acceptance_radius_choice,
+            },
+        ],
     )
 
     return LaunchDescription([

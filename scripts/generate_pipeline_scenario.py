@@ -15,13 +15,27 @@ import random
 import sys
 from typing import Dict, List, Tuple
 
+DEFAULT_NUM_SEGMENTS = 4
+DEFAULT_NUM_OBSTACLES = 1
+DEFAULT_PIPE_RADIUS_M = 0.25
+DEFAULT_PIPE_START_M = (2.0, 0.0, -2.8)
+DEFAULT_MIN_SEGMENT_LENGTH_M = 4.0
+DEFAULT_MAX_SEGMENT_LENGTH_M = 7.0
+DEFAULT_MAX_BEND_DEG = 25.0
+DEFAULT_STANDOFF_HEIGHT_M = 0.8
+DEFAULT_ACCEPTANCE_RADIUS_M = 0.40
+DEFAULT_WAYPOINT_SPACING_M = 2.0
+DEFAULT_MISSION_SPEED_MPS = 0.5
+DEFAULT_WAYPOINT_TIMEOUT_SEC = 45.0
+ENDPOINT_DWELL_SEC = 2.0
+
 
 def generate_pipeline_geometry(
-    num_segments: int = 4,
-    min_length: float = 4.0,
-    max_length: float = 7.0,
-    max_bend_deg: float = 25.0,
-    start_pos: Tuple[float, float, float] = (2.0, 0.0, -2.8),
+    num_segments: int = DEFAULT_NUM_SEGMENTS,
+    min_length: float = DEFAULT_MIN_SEGMENT_LENGTH_M,
+    max_length: float = DEFAULT_MAX_SEGMENT_LENGTH_M,
+    max_bend_deg: float = DEFAULT_MAX_BEND_DEG,
+    start_pos: Tuple[float, float, float] = DEFAULT_PIPE_START_M,
     rng: random.Random = None
 ) -> List[Tuple[float, float, float]]:
     """
@@ -66,8 +80,8 @@ def generate_pipeline_geometry(
 
 def generate_random_obstacles(
     vertices: List[Tuple[float, float, float]],
-    num_obstacles: int = 1,
-    pipe_radius: float = 0.25,
+    num_obstacles: int = DEFAULT_NUM_OBSTACLES,
+    pipe_radius: float = DEFAULT_PIPE_RADIUS_M,
     rng: random.Random = None
 ) -> List[Dict[str, float]]:
     """
@@ -130,7 +144,7 @@ def generate_random_obstacles(
 
 def generate_pipeline_sdf(
     vertices: List[Tuple[float, float, float]],
-    pipe_radius: float = 0.25,
+    pipe_radius: float = DEFAULT_PIPE_RADIUS_M,
     obstacles: List[Dict[str, float]] = None
 ) -> str:
     """
@@ -254,9 +268,9 @@ def generate_pipeline_sdf(
 
 def generate_mission_yaml(
     vertices: List[Tuple[float, float, float]],
-    standoff_height: float = 0.8,
-    acceptance_radius: float = 0.40,
-    waypoint_spacing: float = 2.0,
+    standoff_height: float = DEFAULT_STANDOFF_HEIGHT_M,
+    acceptance_radius: float = DEFAULT_ACCEPTANCE_RADIUS_M,
+    waypoint_spacing: float = DEFAULT_WAYPOINT_SPACING_M,
     seed_used: int = None
 ) -> str:
     """
@@ -295,14 +309,14 @@ def generate_mission_yaml(
         'mission:',
         f'  name: "procedural_pipeline_inspection_{seed_used if seed_used is not None else "rand"}"',
         f'  default_acceptance_radius: {acceptance_radius:.2f}',
-        '  default_speed: 0.5',
-        '  timeout_per_waypoint_sec: 45.0',
+        f'  default_speed: {DEFAULT_MISSION_SPEED_MPS}',
+        f'  timeout_per_waypoint_sec: {DEFAULT_WAYPOINT_TIMEOUT_SEC}',
         '  waypoints:',
     ]
 
     for idx, (wx, wy, wz) in enumerate(dense_waypoints):
         wp_name = "pipe_entry" if idx == 0 else ("survey_terminus" if idx == len(dense_waypoints) - 1 else f"track_{idx}")
-        dwell = 2.0 if (idx == 0 or idx == len(dense_waypoints) - 1) else 0.0
+        dwell = ENDPOINT_DWELL_SEC if (idx == 0 or idx == len(dense_waypoints) - 1) else 0.0
 
         yaml_lines.extend([
             f'    - name: "{wp_name}"',
@@ -319,11 +333,11 @@ def generate_mission_yaml(
 def main():
     parser = argparse.ArgumentParser(description="Procedural Subsea Pipeline Scenario Generator")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility (omit for true random)")
-    parser.add_argument("--num-segments", type=int, default=4, help="Number of pipe segments (3-6)")
-    parser.add_argument("--num-obstacles", type=int, default=1, help="Number of obstacles on pipeline path (0-3)")
-    parser.add_argument("--standoff-height", type=float, default=0.8, help="Inspection standoff altitude above pipe (m)")
-    parser.add_argument("--acceptance-radius", type=float, default=0.40, help="Arrival tolerance radius (m)")
-    parser.add_argument("--waypoint-spacing", type=float, default=2.0, help="Spacing between intermediate tracking waypoints (m)")
+    parser.add_argument("--num-segments", type=int, default=DEFAULT_NUM_SEGMENTS, help="Number of pipe segments (3-6)")
+    parser.add_argument("--num-obstacles", type=int, default=DEFAULT_NUM_OBSTACLES, help="Number of obstacles on pipeline path (0-3)")
+    parser.add_argument("--standoff-height", type=float, default=DEFAULT_STANDOFF_HEIGHT_M, help="Inspection standoff altitude above pipe (m)")
+    parser.add_argument("--acceptance-radius", type=float, default=DEFAULT_ACCEPTANCE_RADIUS_M, help="Arrival tolerance radius (m)")
+    parser.add_argument("--waypoint-spacing", type=float, default=DEFAULT_WAYPOINT_SPACING_M, help="Spacing between intermediate tracking waypoints (m)")
     parser.add_argument("--output-sdf", type=str, default=None, help="Path to write pipeline model.sdf")
     parser.add_argument("--output-yaml", type=str, default=None, help="Path to write pipeline_mission.yaml")
     args = parser.parse_args()
@@ -354,19 +368,19 @@ def main():
     # Generate geometry and obstacles
     vertices = generate_pipeline_geometry(
         num_segments=args.num_segments,
-        start_pos=(2.0, 0.0, -2.8),
+        start_pos=DEFAULT_PIPE_START_M,
         rng=rng
     )
 
     obstacles = generate_random_obstacles(
         vertices=vertices,
         num_obstacles=args.num_obstacles,
-        pipe_radius=0.25,
+        pipe_radius=DEFAULT_PIPE_RADIUS_M,
         rng=rng
     )
 
     # Generate SDF and YAML contents
-    sdf_content = generate_pipeline_sdf(vertices, pipe_radius=0.25, obstacles=obstacles)
+    sdf_content = generate_pipeline_sdf(vertices, pipe_radius=DEFAULT_PIPE_RADIUS_M, obstacles=obstacles)
     yaml_content = generate_mission_yaml(
         vertices,
         standoff_height=args.standoff_height,

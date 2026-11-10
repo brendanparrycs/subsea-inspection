@@ -8,6 +8,8 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Pyth
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
+TEST_OBSTACLE_SIZE_M = 0.5
+
 
 def _include_component(filename, launch_arguments=None):
     """Include a reusable launch description from this package."""
@@ -86,6 +88,26 @@ def generate_launch_description():
     start_sim = LaunchConfiguration("start_sim")
     gui = LaunchConfiguration("gui")
     mission_file = LaunchConfiguration("mission_file")
+    common_topics_file = PathJoinSubstitution([
+        FindPackageShare("subsea_inspection"),
+        "config",
+        "common_topics.yaml",
+    ])
+    inspection_config_file = PathJoinSubstitution([
+        FindPackageShare("subsea_inspection"),
+        "config",
+        "inspection.yaml",
+    ])
+    navigation_config_file = PathJoinSubstitution([
+        FindPackageShare("subsea_inspection"),
+        "config",
+        "navigation.yaml",
+    ])
+    mission_planner_config_file = PathJoinSubstitution([
+        FindPackageShare("subsea_inspection"),
+        "config",
+        "mission_planner.yaml",
+    ])
     avoidance_strategy = LaunchConfiguration("avoidance_strategy")
     avoidance_heave_clearance = LaunchConfiguration("avoidance_heave_clearance")
     spawn_pipeline = LaunchConfiguration("spawn_pipeline")
@@ -126,26 +148,34 @@ def generate_launch_description():
         executable="waypoint_navigator",
         name="waypoint_navigator",
         output="screen",
-        parameters=[{"use_sim_time": True}],
+        parameters=[
+            common_topics_file,
+            navigation_config_file,
+            {"use_sim_time": True},
+        ],
     )
     mission_planner = Node(
         package="subsea_inspection",
         executable="mission_planner",
         name="mission_planner",
         output="screen",
-        parameters=[{
-            "use_sim_time": True,
-            "mission_file": mission_file,
-            "avoidance_strategy": avoidance_strategy,
-            "avoidance_heave_clearance": avoidance_heave_clearance,
-        }],
+        parameters=[
+            common_topics_file,
+            mission_planner_config_file,
+            {
+                "use_sim_time": True,
+                "mission_file": mission_file,
+                "avoidance_strategy": avoidance_strategy,
+                "avoidance_heave_clearance": avoidance_heave_clearance,
+            },
+        ],
     )
 
     obstacle_sdf = PythonExpression([
         "'<sdf version=\"1.8\"><model name=\"inspection_obstacle\"><static>true</static><link name=\"link\"><pose>' + ",
         "str('", obstacle_x, "') + ' ' + str('", obstacle_y, "') + ' ' + str('", obstacle_z, "') + ' 0 0 0</pose>' + ",
-        "'<collision name=\"c\"><geometry><box><size>0.5 0.5 0.5</size></box></geometry></collision>' + ",
-        "'<visual name=\"v\"><geometry><box><size>0.5 0.5 0.5</size></box></geometry>' + ",
+        f"'<collision name=\"c\"><geometry><box><size>{TEST_OBSTACLE_SIZE_M} {TEST_OBSTACLE_SIZE_M} {TEST_OBSTACLE_SIZE_M}</size></box></geometry></collision>' + ",
+        f"'<visual name=\"v\"><geometry><box><size>{TEST_OBSTACLE_SIZE_M} {TEST_OBSTACLE_SIZE_M} {TEST_OBSTACLE_SIZE_M}</size></box></geometry>' + ",
         "'<material><ambient>1 0 0 1</ambient><diffuse>1 0 0 1</diffuse></material></visual></link></model></sdf>'",
     ])
     obstacle_spawner = Node(
@@ -166,15 +196,14 @@ def generate_launch_description():
         executable="inspection_tracker",
         name="inspection_tracker",
         output="screen",
-        parameters=[{
-            "use_sim_time": True,
-            "mission_file": mission_file,
-            "standoff_height": 0.80,
-            "min_standoff": 0.50,
-            "max_standoff": 1.20,
-            "max_cross_track": 0.40,
-            "max_heading_error_deg": 30.0,
-        }],
+        parameters=[
+            common_topics_file,
+            inspection_config_file,
+            {
+                "use_sim_time": True,
+                "mission_file": mission_file,
+            },
+        ],
     )
 
     return LaunchDescription([

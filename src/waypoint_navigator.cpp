@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cmath>
 #include <memory>
+#include <string>
 
 #include "geometry_msgs/msg/twist.hpp"
 #include "nav_msgs/msg/odometry.hpp"
@@ -11,12 +12,41 @@
 #include "tf2/LinearMath/Quaternion.hpp"
 
 #include "subsea_inspection/action/navigate_to_waypoint.hpp"
+#include "subsea_inspection/common/constants.hpp"
 #include "subsea_inspection/geometry_utils.hpp"
 #include "subsea_inspection/pid_controller.hpp"
 
 using namespace std::chrono_literals;
 using subsea_inspection::PidController;
 namespace geometry = subsea_inspection::geometry;
+
+namespace {
+constexpr double kDefaultTargetXM = 5.0;
+constexpr double kDefaultTargetYM = 0.0;
+constexpr double kDefaultTargetZM = -2.0;
+constexpr double kDefaultAcceptanceRadiusM = 1.0;
+constexpr double kDefaultHeadingToleranceDeg = 20.0;
+
+constexpr double kDefaultSurgeKp = 0.5;
+constexpr double kDefaultSurgeKi = 0.02;
+constexpr double kDefaultSurgeKd = 0.1;
+constexpr double kDefaultSurgeMaxSpeedMps = 0.6;
+
+constexpr double kDefaultHeaveKp = 0.8;
+constexpr double kDefaultHeaveKi = 0.01;
+constexpr double kDefaultHeaveKd = 0.25;
+constexpr double kDefaultHeaveMaxSpeedMps = 0.6;
+
+constexpr double kDefaultYawKp = 1.6;
+constexpr double kDefaultYawKi = 0.01;
+constexpr double kDefaultYawKd = 0.25;
+constexpr double kDefaultYawMaxSpeedMps = 0.6;
+constexpr double kMinimumHeadingDistanceM = 0.1;
+constexpr double kCloseRangeDistanceM = 0.6;
+constexpr double kCloseRangeHeadingToleranceDeg = 20.0;
+constexpr double kMaximumControlStepSec = 1.0;
+constexpr double kPidIntegralLimit = 0.5;
+}  // namespace
 
 using NavigateToWaypoint = subsea_inspection::action::NavigateToWaypoint;
 using GoalHandleNavigate = rclcpp_action::ServerGoalHandle<NavigateToWaypoint>;
@@ -30,38 +60,42 @@ public:
         target_x_(0.0),
         target_y_(0.0),
         target_z_(0.0),
-        acceptance_radius_(1.0),
+        acceptance_radius_(kDefaultAcceptanceRadiusM),
         has_odometry_(false),
         has_active_goal_(false)
     {
         // Default target coordinates / tolerances
-        this->declare_parameter<double>("target_x", 5.0);
-        this->declare_parameter<double>("target_y", 0.0);
-        this->declare_parameter<double>("target_z", -2.0);
-        this->declare_parameter<double>("acceptance_radius", 1.0);
+        this->declare_parameter<double>("target_x", kDefaultTargetXM);
+        this->declare_parameter<double>("target_y", kDefaultTargetYM);
+        this->declare_parameter<double>("target_z", kDefaultTargetZM);
+        this->declare_parameter<double>("acceptance_radius", kDefaultAcceptanceRadiusM);
+        this->declare_parameter<std::string>("odom_topic", "/model/bluerov2_heavy/odometry");
+        this->declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel");
 
         // Control gating parameters
-        this->declare_parameter<double>("heading_tolerance_deg", 20.0);
+        this->declare_parameter<double>("heading_tolerance_deg", kDefaultHeadingToleranceDeg);
 
         // Surge PID parameters
-        this->declare_parameter<double>("surge_kp", 0.5);
-        this->declare_parameter<double>("surge_ki", 0.02);
-        this->declare_parameter<double>("surge_kd", 0.1);
-        this->declare_parameter<double>("surge_max_speed", 0.6);
+        this->declare_parameter<double>("surge_kp", kDefaultSurgeKp);
+        this->declare_parameter<double>("surge_ki", kDefaultSurgeKi);
+        this->declare_parameter<double>("surge_kd", kDefaultSurgeKd);
+        this->declare_parameter<double>("surge_max_speed", kDefaultSurgeMaxSpeedMps);
 
         // Heave PID parameters
-        this->declare_parameter<double>("heave_kp", 0.8);
-        this->declare_parameter<double>("heave_ki", 0.01);
-        this->declare_parameter<double>("heave_kd", 0.25);
-        this->declare_parameter<double>("heave_max_speed", 0.6);
+        this->declare_parameter<double>("heave_kp", kDefaultHeaveKp);
+        this->declare_parameter<double>("heave_ki", kDefaultHeaveKi);
+        this->declare_parameter<double>("heave_kd", kDefaultHeaveKd);
+        this->declare_parameter<double>("heave_max_speed", kDefaultHeaveMaxSpeedMps);
 
         // Yaw PID parameters
-        this->declare_parameter<double>("yaw_kp", 1.6);
-        this->declare_parameter<double>("yaw_ki", 0.01);
-        this->declare_parameter<double>("yaw_kd", 0.25);
-        this->declare_parameter<double>("yaw_max_speed", 0.6);
+        this->declare_parameter<double>("yaw_kp", kDefaultYawKp);
+        this->declare_parameter<double>("yaw_ki", kDefaultYawKi);
+        this->declare_parameter<double>("yaw_kd", kDefaultYawKd);
+        this->declare_parameter<double>("yaw_max_speed", kDefaultYawMaxSpeedMps);
 
         load_parameters();
+        const auto odom_topic = this->get_parameter("odom_topic").as_string();
+        const auto cmd_vel_topic = this->get_parameter("cmd_vel_topic").as_string();
 
         // Subscribe to odometry
         rclcpp::QoS qos_profile(10);
@@ -69,13 +103,13 @@ public:
         qos_profile.durability(rclcpp::DurabilityPolicy::Volatile);
 
         odom_subscription_ = this->create_subscription<nav_msgs::msg::Odometry>(
-            "/model/bluerov2_heavy/odometry",
+            odom_topic,
             qos_profile,
             std::bind(&WaypointNavigator::odometry_callback, this, std::placeholders::_1)
         );
 
         // Publisher for velocity commands
-        cmd_vel_publisher_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
+        cmd_vel_publisher_ = this->create_publisher<geometry_msgs::msg::Twist>(cmd_vel_topic, 10);
 
         // Create action server for /navigate_to_waypoint
         action_server_ = rclcpp_action::create_server<NavigateToWaypoint>(
@@ -102,7 +136,7 @@ private:
         acceptance_radius_ = this->get_parameter("acceptance_radius").as_double();
 
         double heading_tolerance_deg = this->get_parameter("heading_tolerance_deg").as_double();
-        heading_tolerance_rad_ = heading_tolerance_deg * (M_PI / 180.0);
+        heading_tolerance_rad_ = heading_tolerance_deg * subsea_inspection::constants::kDegreesToRadians;
 
         // Initialize PID controllers
         surge_pid_ = PidController(
@@ -110,7 +144,7 @@ private:
             this->get_parameter("surge_ki").as_double(),
             this->get_parameter("surge_kd").as_double(),
             this->get_parameter("surge_max_speed").as_double(),
-            0.5
+            kPidIntegralLimit
         );
 
         heave_pid_ = PidController(
@@ -118,7 +152,7 @@ private:
             this->get_parameter("heave_ki").as_double(),
             this->get_parameter("heave_kd").as_double(),
             this->get_parameter("heave_max_speed").as_double(),
-            0.5
+            kPidIntegralLimit
         );
 
         yaw_pid_ = PidController(
@@ -126,7 +160,7 @@ private:
             this->get_parameter("yaw_ki").as_double(),
             this->get_parameter("yaw_kd").as_double(),
             this->get_parameter("yaw_max_speed").as_double(),
-            0.5
+            kPidIntegralLimit
         );
     }
 
@@ -262,7 +296,7 @@ private:
         rclcpp::Time current_time = this->now();
         double dt = (current_time - last_time_).seconds();
         last_time_ = current_time;
-        if (dt <= 0.0 || dt > 1.0) return;
+        if (dt <= 0.0 || dt > kMaximumControlStepSec) return;
 
         // Calculate world frame displacements
         double dx = target_x_ - current_x_;
@@ -297,7 +331,7 @@ private:
         }
 
         // 1. Yaw Heading Guidance (Line-of-Sight)
-        double desired_yaw = (dist_2d > 0.1) ? geometry::desired_heading(dx, dy) : current_yaw_;
+        double desired_yaw = (dist_2d > kMinimumHeadingDistanceM) ? geometry::desired_heading(dx, dy) : current_yaw_;
         double yaw_error = geometry::angle_error(desired_yaw, current_yaw_);
         double cmd_yaw = yaw_pid_.compute(yaw_error, dt);
 
@@ -306,7 +340,9 @@ private:
 
         // 3. Forward Surge Guidance (with Turn-Before-Drive gating)
         // Tighten tolerance on waypoint approach to prevent orbiting while allowing smooth capture
-        double effective_tolerance = (dist_2d < 0.6) ? (20.0 * M_PI / 180.0) : heading_tolerance_rad_;
+        double effective_tolerance = (dist_2d < kCloseRangeDistanceM)
+            ? (kCloseRangeHeadingToleranceDeg * subsea_inspection::constants::kDegreesToRadians)
+            : heading_tolerance_rad_;
         double cmd_surge = 0.0;
         if (std::abs(yaw_error) < effective_tolerance) {
             // Smoothly scale speed as heading error drops to zero (cos^2 for stronger suppression on slight misalignments)
@@ -326,7 +362,7 @@ private:
         // Publish Action Feedback
         auto feedback = std::make_shared<NavigateToWaypoint::Feedback>();
         feedback->distance_remaining = dist_3d;
-        feedback->heading_error_deg = yaw_error * (180.0 / M_PI);
+        feedback->heading_error_deg = yaw_error * subsea_inspection::constants::kRadiansToDegrees;
         active_goal_handle_->publish_feedback(feedback);
 
         RCLCPP_INFO_THROTTLE(
@@ -335,7 +371,7 @@ private:
             1000,
             "[Nav Action] Dist: %.2f m (2D: %.2f, Z: %.2f) | YawErr: %.1f deg | Cmd: [Surge: %.2f, Heave: %.2f, Yaw: %.2f]",
             dist_3d, dist_2d, dz,
-            yaw_error * (180.0 / M_PI),
+            yaw_error * subsea_inspection::constants::kRadiansToDegrees,
             cmd_surge, cmd_heave, cmd_yaw
         );
     }

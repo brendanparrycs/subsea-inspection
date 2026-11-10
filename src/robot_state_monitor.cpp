@@ -1,10 +1,19 @@
 #include <cmath>
+#include <chrono>
+#include <cstddef>
 #include <memory>
 
 #include "rclcpp/rclcpp.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "tf2/LinearMath/Matrix3x3.hpp"
 #include "tf2/LinearMath/Quaternion.hpp"
+
+#include "subsea_inspection/common/constants.hpp"
+
+namespace {
+constexpr std::size_t kOdometryQueueDepth = 10;
+constexpr std::chrono::milliseconds kStateLogThrottlePeriod{1000};
+}  // namespace
 
 /// @brief ROS 2 node for monitoring BlueROV2 odometry (position, altitude, speed) from Gazebo via ros_gz_bridge.
 class RobotStateMonitor: public rclcpp::Node {
@@ -16,7 +25,7 @@ public:
         std::string odom_topic = this->get_parameter("odom_topic").as_string();
 
         // Standard reliable QoS matching Gazebo bridge publisher
-        rclcpp::QoS qos_profile(10);
+        rclcpp::QoS qos_profile(kOdometryQueueDepth);
         qos_profile.reliability(rclcpp::ReliabilityPolicy::Reliable);
         qos_profile.durability(rclcpp::DurabilityPolicy::Volatile);
 
@@ -47,15 +56,14 @@ private:
         m.getRPY(roll, pitch, yaw);
 
         // Convert radians to degrees for logging
-        constexpr double rad2deg = 180.0 / M_PI;
-        double roll_deg = roll * rad2deg;
-        double pitch_deg = pitch * rad2deg;
-        double yaw_deg = yaw * rad2deg;
+        double roll_deg = roll * subsea_inspection::constants::kRadiansToDegrees;
+        double pitch_deg = pitch * subsea_inspection::constants::kRadiansToDegrees;
+        double yaw_deg = yaw * subsea_inspection::constants::kRadiansToDegrees;
 
         RCLCPP_INFO_THROTTLE(
             this->get_logger(),
             *this->get_clock(),
-            1000,
+            kStateLogThrottlePeriod.count(),
             "[State] Pos: [X: %.2f, Y: %.2f, Z: %.2f] m | RPY: [%.1f, %.1f, %.1f] deg | Speed: %.2f m/s",
             position.x, position.y, position.z,
             roll_deg, pitch_deg, yaw_deg,

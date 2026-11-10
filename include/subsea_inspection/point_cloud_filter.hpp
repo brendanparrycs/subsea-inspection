@@ -7,6 +7,9 @@
 
 namespace subsea_inspection {
 
+/// Default obstacle distance threshold used when no runtime configuration is provided.
+inline constexpr double kDefaultDetectionThresholdM = 1.5;
+
 /// @brief Represents a single 3D point in Cartesian coordinates.
 struct Point3D {
     double x{0.0};
@@ -65,7 +68,7 @@ struct FilterResult {
 inline FilterResult filter_corridor(
     const std::vector<Point3D> &input_points,
     const RoiBoundingBox &roi,
-    double detection_threshold_m = 1.5
+    double detection_threshold_m = kDefaultDetectionThresholdM
 ) {
     FilterResult result;
 

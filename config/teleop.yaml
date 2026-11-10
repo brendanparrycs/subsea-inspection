@@ -1,0 +1,21 @@
+keyboard_teleop:
+  ros__parameters:
+    linear_speed: 0.5
+    heave_speed: 0.3
+    angular_speed: 0.5
+
+joystick_teleop:
+  ros__parameters:
+    axis_surge: 1
+    axis_sway: 0
+    axis_heave: 4
+    axis_yaw: 3
+    invert_surge: false
+    invert_sway: true
+    invert_heave: false
+    invert_yaw: true
+    deadzone: 0.10
+    max_linear_speed: 0.8
+    max_heave_speed: 0.5
+    max_angular_speed: 0.8
+    joy_timeout: 0.5

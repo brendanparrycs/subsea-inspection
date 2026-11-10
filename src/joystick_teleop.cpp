@@ -1,13 +1,33 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <memory>
+#include <string>
 
 #include "geometry_msgs/msg/twist.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/joy.hpp"
 
-using namespace std::chrono_literals;
+namespace {
+constexpr int kDefaultSurgeAxis = 1;
+constexpr int kDefaultSwayAxis = 0;
+constexpr int kDefaultHeaveAxis = 4;
+constexpr int kDefaultYawAxis = 3;
+constexpr bool kDefaultInvertSurge = false;
+constexpr bool kDefaultInvertSway = true;
+constexpr bool kDefaultInvertHeave = false;
+constexpr bool kDefaultInvertYaw = true;
+constexpr double kDefaultDeadzone = 0.10;
+constexpr double kDefaultMaxLinearSpeedMps = 0.8;
+constexpr double kDefaultMaxHeaveSpeedMps = 0.5;
+constexpr double kDefaultMaxAngularSpeedRadps = 0.8;
+constexpr double kDefaultJoyTimeoutSec = 0.5;
+constexpr auto kJoyTopic = "/joy";
+constexpr std::chrono::milliseconds kPublishPeriod{100};
+constexpr std::size_t kQueueDepth = 10;
+constexpr auto kDefaultCmdVelTopic = "/cmd_vel";
+}  // namespace
 
 /// @brief Translates gamepad sensor_msgs/msg/Joy axis and button states into geometry_msgs/msg/Twist for BlueROV2 Heavy.
 class JoystickTeleop: public rclcpp::Node {
@@ -15,23 +35,24 @@ public:
     /// @brief Initializes node, declares parameters, creates subscribers, publishers, and control loop timer.
     JoystickTeleop(): Node("joystick_teleop") {
         // Declare axis indices
-        this->declare_parameter<int>("axis_surge", 1);
-        this->declare_parameter<int>("axis_sway", 0);
-        this->declare_parameter<int>("axis_heave", 4);
-        this->declare_parameter<int>("axis_yaw", 3);
+        this->declare_parameter<int>("axis_surge", kDefaultSurgeAxis);
+        this->declare_parameter<int>("axis_sway", kDefaultSwayAxis);
+        this->declare_parameter<int>("axis_heave", kDefaultHeaveAxis);
+        this->declare_parameter<int>("axis_yaw", kDefaultYawAxis);
 
         // Declare axis inversion flags
-        this->declare_parameter<bool>("invert_surge", false);
-        this->declare_parameter<bool>("invert_sway", true);
-        this->declare_parameter<bool>("invert_heave", false);
-        this->declare_parameter<bool>("invert_yaw", true);
+        this->declare_parameter<bool>("invert_surge", kDefaultInvertSurge);
+        this->declare_parameter<bool>("invert_sway", kDefaultInvertSway);
+        this->declare_parameter<bool>("invert_heave", kDefaultInvertHeave);
+        this->declare_parameter<bool>("invert_yaw", kDefaultInvertYaw);
 
         // Declare deadzone and velocity limits
-        this->declare_parameter<double>("deadzone", 0.10);
-        this->declare_parameter<double>("max_linear_speed", 0.8);
-        this->declare_parameter<double>("max_heave_speed", 0.5);
-        this->declare_parameter<double>("max_angular_speed", 0.8);
-        this->declare_parameter<double>("joy_timeout", 0.5);
+        this->declare_parameter<double>("deadzone", kDefaultDeadzone);
+        this->declare_parameter<double>("max_linear_speed", kDefaultMaxLinearSpeedMps);
+        this->declare_parameter<double>("max_heave_speed", kDefaultMaxHeaveSpeedMps);
+        this->declare_parameter<double>("max_angular_speed", kDefaultMaxAngularSpeedRadps);
+        this->declare_parameter<double>("joy_timeout", kDefaultJoyTimeoutSec);
+        this->declare_parameter<std::string>("cmd_vel_topic", kDefaultCmdVelTopic);
 
         // Retrieve parameter values
         axis_surge_ = this->get_parameter("axis_surge").as_int();
@@ -49,19 +70,20 @@ public:
         max_heave_speed_ = this->get_parameter("max_heave_speed").as_double();
         max_angular_speed_ = this->get_parameter("max_angular_speed").as_double();
         joy_timeout_sec_ = this->get_parameter("joy_timeout").as_double();
+        const auto cmd_vel_topic = this->get_parameter("cmd_vel_topic").as_string();
 
         // Subscribe to /joy topic from joy_node
         joy_subscription_ = this->create_subscription<sensor_msgs::msg::Joy>(
-            "/joy",
-            10,
+            kJoyTopic,
+            kQueueDepth,
             std::bind(&JoystickTeleop::joy_callback, this, std::placeholders::_1)
         );
 
         // Publisher for velocity commands
-        cmd_vel_publisher_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
+        cmd_vel_publisher_ = this->create_publisher<geometry_msgs::msg::Twist>(cmd_vel_topic, kQueueDepth);
 
         // 100ms (10Hz) timer loop to publish cmd_vel to satisfy motion_controller watchdog
-        timer_ = this->create_wall_timer(100ms, std::bind(&JoystickTeleop::publish_twist, this));
+        timer_ = this->create_wall_timer(kPublishPeriod, std::bind(&JoystickTeleop::publish_twist, this));
 
         RCLCPP_INFO(this->get_logger(), "JoystickTeleop initialized. Awaiting /joy messages...");
     }

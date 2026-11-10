@@ -1,0 +1,9 @@
+inspection_tracker:
+  ros__parameters:
+    report_directory: "reports"
+    standoff_height: 0.80
+    bin_resolution: 0.10
+    min_standoff: 0.50
+    max_standoff: 1.20
+    max_cross_track: 0.40
+    max_heading_error_deg: 30.0

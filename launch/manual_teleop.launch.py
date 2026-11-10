@@ -39,6 +39,16 @@ def generate_launch_description():
     teleop_choice = LaunchConfiguration("teleop")
     start_sim_choice = LaunchConfiguration("start_sim")
     gui_choice = LaunchConfiguration("gui")
+    common_topics_file = PathJoinSubstitution([
+        FindPackageShare("subsea_inspection"),
+        "config",
+        "common_topics.yaml",
+    ])
+    teleop_config_file = PathJoinSubstitution([
+        FindPackageShare("subsea_inspection"),
+        "config",
+        "teleop.yaml",
+    ])
 
     # Shared POSIM demo simulation and core vehicle nodes.
     posim_simulation = IncludeLaunchDescription(
@@ -73,6 +83,7 @@ def generate_launch_description():
         name="keyboard_teleop",
         output="screen",
         prefix="gnome-terminal -- ",
+        parameters=[common_topics_file, teleop_config_file],
         condition=IfCondition(
             PythonExpression(["'", teleop_choice, "' == 'keyboard'"])
         )
@@ -94,6 +105,7 @@ def generate_launch_description():
         executable="joystick_teleop",
         name="joystick_teleop",
         output="screen",
+        parameters=[common_topics_file, teleop_config_file],
         condition=IfCondition(
             PythonExpression(["'", teleop_choice, "' == 'joystick'"])
         )

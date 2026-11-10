@@ -19,13 +19,28 @@ using namespace std::chrono_literals;
 using NavigateToWaypoint = subsea_inspection::action::NavigateToWaypoint;
 using GoalHandleNavigate = rclcpp_action::ClientGoalHandle<NavigateToWaypoint>;
 
+namespace {
+constexpr double kDefaultMissionAcceptanceRadiusM = 0.5;
+constexpr double kDefaultInitialDepthM = -2.0;
+constexpr double kDefaultAvoidanceHeaveClearanceM = 0.8;
+constexpr double kDefaultAvoidanceLateralOffsetM = 0.8;
+constexpr double kDefaultAvoidanceCooldownSec = 3.0;
+constexpr double kDetourAcceptanceRadiusM = 0.6;
+constexpr double kMinimumObstacleForwardDistanceM = 0.8;
+constexpr double kDetourForwardClearanceM = 1.2;
+constexpr double kSurfaceDepthLimitM = -0.5;
+constexpr double kMinimumDirectionLengthM = 1e-3;
+constexpr double kMinimumSegmentLengthM = 1e-3;
+constexpr std::chrono::milliseconds kSequencerPeriod{100};
+}  // namespace
+
 /// @brief Represents a single 3D inspection waypoint along the pipeline route.
 struct Waypoint {
     std::string name;
     double x{0.0};
     double y{0.0};
     double z{0.0};
-    double acceptance_radius{0.5};
+    double acceptance_radius{kDefaultMissionAcceptanceRadiusM};
     double dwell_sec{0.0};
 };
 
@@ -48,13 +63,13 @@ public:
     MissionPlanner(): 
         Node("mission_planner"), 
         state_(MissionState::IDLE), 
-        default_acceptance_radius_(0.5), 
+        default_acceptance_radius_(kDefaultMissionAcceptanceRadiusM),
         current_waypoint_index_(0), 
         total_waypoints_completed_(0),
         obstacle_avoidance_events_(0),
         current_x_(0.0),
         current_y_(0.0),
-        current_z_(-2.0),
+        current_z_(kDefaultInitialDepthM),
         has_odometry_(false),
         is_detour_active_(false),
         has_avoided_once_(false)
@@ -63,14 +78,16 @@ public:
         this->declare_parameter<std::string>("mission_file", "");
         this->declare_parameter<std::string>("odom_topic", "/model/bluerov2_heavy/odometry");
         this->declare_parameter<std::string>("obstacle_topic", "/obstacle/closest_point");
+        this->declare_parameter<std::string>("mission_complete_topic", "/mission/complete");
         this->declare_parameter<std::string>("avoidance_strategy", "fly_over");
-        this->declare_parameter<double>("avoidance_heave_clearance", 0.8);
-        this->declare_parameter<double>("avoidance_lateral_offset", 0.8);
-        this->declare_parameter<double>("avoidance_cooldown_sec", 3.0);
+        this->declare_parameter<double>("avoidance_heave_clearance", kDefaultAvoidanceHeaveClearanceM);
+        this->declare_parameter<double>("avoidance_lateral_offset", kDefaultAvoidanceLateralOffsetM);
+        this->declare_parameter<double>("avoidance_cooldown_sec", kDefaultAvoidanceCooldownSec);
 
         mission_file_ = this->get_parameter("mission_file").as_string();
         odom_topic_ = this->get_parameter("odom_topic").as_string();
         obstacle_topic_ = this->get_parameter("obstacle_topic").as_string();
+        const auto mission_complete_topic = this->get_parameter("mission_complete_topic").as_string();
         avoidance_strategy_ = this->get_parameter("avoidance_strategy").as_string();
         avoidance_heave_clearance_ = this->get_parameter("avoidance_heave_clearance").as_double();
         avoidance_lateral_offset_ = this->get_parameter("avoidance_lateral_offset").as_double();
@@ -114,13 +131,13 @@ public:
 
         // Publisher for mission completion notification
         mission_complete_publisher_ = this->create_publisher<std_msgs::msg::Bool>(
-            "/mission/complete",
+            mission_complete_topic,
             10
         );
 
         // 100ms (10Hz) sequencer loop timer
         timer_ = this->create_wall_timer(
-            100ms,
+            kSequencerPeriod,
             std::bind(&MissionPlanner::sequencer_loop, this)
         );
 
@@ -199,7 +216,7 @@ private:
         const auto &target_wp = waypoints_[current_waypoint_index_];
         Waypoint detour;
         detour.name = target_wp.name + "_detour";
-        detour.acceptance_radius = 0.6;
+        detour.acceptance_radius = kDetourAcceptanceRadiusM;
         detour.dwell_sec = 0.0;
 
         // Compute unit vector from current position toward the target waypoint
@@ -207,12 +224,12 @@ private:
         double dy = target_wp.y - current_y_;
         double d_2d = std::hypot(dx, dy);
 
-        double ux = (d_2d > 1e-3) ? (dx / d_2d) : 1.0;
-        double uy = (d_2d > 1e-3) ? (dy / d_2d) : 0.0;
+        double ux = (d_2d > kMinimumDirectionLengthM) ? (dx / d_2d) : 1.0;
+        double uy = (d_2d > kMinimumDirectionLengthM) ? (dy / d_2d) : 0.0;
 
         // Advance forward past the detected obstacle with clearance margin
-        double obs_dist = std::max(0.8, static_cast<double>(obstacle_point.x));
-        double advance_dist = obs_dist + 1.2;
+        double obs_dist = std::max(kMinimumObstacleForwardDistanceM, static_cast<double>(obstacle_point.x));
+        double advance_dist = obs_dist + kDetourForwardClearanceM;
 
         if (avoidance_strategy_ == "lateral_bypass") {
             // Lateral bypass: move perpendicularly to the line of transit
@@ -226,7 +243,7 @@ private:
             // Ascend to safely clear over obstacle; clamp to -0.5m so ROV does not breach surface
             detour.x = current_x_ + (ux * advance_dist);
             detour.y = current_y_ + (uy * advance_dist);
-            detour.z = std::min(-0.5, current_z_ + avoidance_heave_clearance_);
+            detour.z = std::min(kSurfaceDepthLimitM, current_z_ + avoidance_heave_clearance_);
         }
 
         RCLCPP_INFO(
@@ -261,7 +278,7 @@ private:
 
             YAML::Node mission_node = root["mission"];
             mission_name_ = mission_node["name"].as<std::string>("unnamed_mission");
-            default_acceptance_radius_ = mission_node["default_acceptance_radius"].as<double>(0.5);
+            default_acceptance_radius_ = mission_node["default_acceptance_radius"].as<double>(kDefaultMissionAcceptanceRadiusM);
 
             YAML::Node waypoints_node = mission_node["waypoints"];
             if (!waypoints_node || !waypoints_node.IsSequence()) {
@@ -276,7 +293,7 @@ private:
                 waypoint.name = wp["name"].as<std::string>("wp_" + std::to_string(i + 1));
                 waypoint.x = wp["x"].as<double>(0.0);
                 waypoint.y = wp["y"].as<double>(0.0);
-                waypoint.z = wp["z"].as<double>(-2.0);
+                waypoint.z = wp["z"].as<double>(kDefaultInitialDepthM);
                 waypoint.acceptance_radius = wp["acceptance_radius"].as<double>(default_acceptance_radius_);
                 waypoint.dwell_sec = wp["dwell_sec"].as<double>(0.0);
 
@@ -497,7 +514,7 @@ private:
                         double seg_dx = next_wp.x - curr_wp.x;
                         double seg_dy = next_wp.y - curr_wp.y;
                         double seg_len = std::hypot(seg_dx, seg_dy);
-                        if (seg_len < 1e-3) {
+                        if (seg_len < kMinimumSegmentLengthM) {
                             current_waypoint_index_++;
                             continue;
                         }

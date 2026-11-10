@@ -29,6 +29,13 @@ using subsea_inspection::InspectionCriteria;
 using subsea_inspection::TrackingResult;
 using subsea_inspection::PipelineSegment;
 
+namespace {
+constexpr double kDefaultStandoffHeightM = 0.80;
+constexpr double kDefaultPipelineVertexDepthM = -2.0;
+constexpr double kPipelineMarkerDiameterM = 0.15;
+constexpr double kProjectionRayWidthM = 0.05;
+}  // namespace
+
 /// @brief ROS 2 node tracking BlueROV2 inspection pose relative to continuous 3D pipeline geometry,
 /// evaluating multi-criteria survey standards, and publishing RViz visualization markers.
 class InspectionTracker: public rclcpp::Node {
@@ -38,23 +45,27 @@ public:
         Node("inspection_tracker"),
         mission_file_(""),
         odometry_topic_("/model/bluerov2_heavy/odometry"),
-        standoff_height_(0.80),
-        bin_resolution_(0.10),
+        standoff_height_(kDefaultStandoffHeightM),
+        bin_resolution_(subsea_inspection::kDefaultPipelineBinResolutionM),
         has_odometry_(false)
     {
+        const InspectionCriteria default_criteria{};
+
         // Declare and get parameters
         this->declare_parameter<std::string>("mission_file", mission_file_);
-        this->declare_parameter<std::string>("odometry_topic", odometry_topic_);
+        this->declare_parameter<std::string>("odom_topic", odometry_topic_);
+        this->declare_parameter<std::string>("mission_complete_topic", "/mission/complete");
         this->declare_parameter<std::string>("report_directory", "reports");
         this->declare_parameter<double>("standoff_height", standoff_height_);
         this->declare_parameter<double>("bin_resolution", bin_resolution_);
-        this->declare_parameter<double>("min_standoff", 0.50);
-        this->declare_parameter<double>("max_standoff", 1.20);
-        this->declare_parameter<double>("max_cross_track", 0.40);
-        this->declare_parameter<double>("max_heading_error_deg", 30.0);
+        this->declare_parameter<double>("min_standoff", default_criteria.min_standoff_m);
+        this->declare_parameter<double>("max_standoff", default_criteria.max_standoff_m);
+        this->declare_parameter<double>("max_cross_track", default_criteria.max_cross_track_m);
+        this->declare_parameter<double>("max_heading_error_deg", default_criteria.max_heading_error_deg);
 
         mission_file_ = this->get_parameter("mission_file").as_string();
-        odometry_topic_ = this->get_parameter("odometry_topic").as_string();
+        odometry_topic_ = this->get_parameter("odom_topic").as_string();
+        const auto mission_complete_topic = this->get_parameter("mission_complete_topic").as_string();
         report_directory_ = this->get_parameter("report_directory").as_string();
         standoff_height_ = this->get_parameter("standoff_height").as_double();
         bin_resolution_ = this->get_parameter("bin_resolution").as_double();
@@ -99,7 +110,7 @@ public:
 
         // Subscription for mission completion to trigger post-survey report
         mission_complete_subscription_ = this->create_subscription<std_msgs::msg::Bool>(
-            "/mission/complete",
+            mission_complete_topic,
             10,
             std::bind(&InspectionTracker::mission_complete_callback, this, std::placeholders::_1)
         );
@@ -142,12 +153,12 @@ private:
             for (size_t i = 0; i < waypoints.size(); ++i) {
                 double wx = waypoints[i]["x"].as<double>(0.0);
                 double wy = waypoints[i]["y"].as<double>(0.0);
-                double wz = waypoints[i]["z"].as<double>(-2.0);
+                double wz = waypoints[i]["z"].as<double>(kDefaultPipelineVertexDepthM);
                 std::string name = waypoints[i]["name"].as<std::string>("wp_" + std::to_string(i));
 
                 // Reconstruct seabed pipe coordinates by subtracting inspection standoff altitude
                 PipePoint3D pipe_vertex(wx, wy, wz - standoff_height_);
-                tracker_->add_vertex(name, pipe_vertex, 0.25);
+                tracker_->add_vertex(name, pipe_vertex);
             }
 
             RCLCPP_INFO(
@@ -235,7 +246,7 @@ private:
         pipe_marker.id = 0;
         pipe_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
         pipe_marker.action = visualization_msgs::msg::Marker::ADD;
-        pipe_marker.scale.x = 0.15; // 15cm thickness
+        pipe_marker.scale.x = kPipelineMarkerDiameterM;
         pipe_marker.color.r = 0.35f;
         pipe_marker.color.g = 0.40f;
         pipe_marker.color.b = 0.45f;
@@ -267,7 +278,7 @@ private:
         ray_marker.id = 1;
         ray_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
         ray_marker.action = visualization_msgs::msg::Marker::ADD;
-        ray_marker.scale.x = 0.05; // 5cm line width
+        ray_marker.scale.x = kProjectionRayWidthM;
 
         // Green if within inspection qualification envelope; Red if criteria violated (e.g. fly-over detour)
         if (latest_result_.is_inspected) {
@@ -351,7 +362,7 @@ private:
         double coverage_pct = tracker_->get_coverage_percentage();
         double uninspected_len = std::max(0.0, total_len - inspected_len);
 
-        auto gaps = tracker_->get_uninspected_gaps(0.15);
+        auto gaps = tracker_->get_uninspected_gaps();
         auto breakdown = tracker_->get_segment_coverage_breakdown();
 
         // Write YAML report file
@@ -413,7 +424,12 @@ private:
         RCLCPP_INFO(this->get_logger(), " Overall Certified Coverage:  %6.1f %%", coverage_pct);
         RCLCPP_INFO(this->get_logger(), " Discretization Resolution:   %6.2f m", bin_resolution_);
         RCLCPP_INFO(this->get_logger(), "----------------------------------------------------------------------");
-        RCLCPP_INFO(this->get_logger(), " UNINSPECTED GAP REGISTRY (%zu Gaps >= 0.15 m):", gaps.size());
+        RCLCPP_INFO(
+            this->get_logger(),
+            " UNINSPECTED GAP REGISTRY (%zu Gaps >= %.2f m):",
+            gaps.size(),
+            subsea_inspection::kDefaultMinimumGapLengthM
+        );
         if (gaps.empty()) {
             RCLCPP_INFO(this->get_logger(), "  None! Full 100%% contiguous coverage certified.");
         } else {

@@ -1,0 +1,5 @@
+mission_planner:
+  ros__parameters:
+    avoidance_heave_clearance: 0.8
+    avoidance_lateral_offset: 0.8
+    avoidance_cooldown_sec: 3.0

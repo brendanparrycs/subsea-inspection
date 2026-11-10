@@ -8,10 +8,16 @@
 #include <string>
 #include <vector>
 
+#include "subsea_inspection/common/constants.hpp"
 #include "subsea_inspection/geometry_utils.hpp"
 #include "subsea_inspection/point_cloud_filter.hpp"
 
 namespace subsea_inspection {
+
+/// Default distance resolution used to discretize pipeline inspection coverage.
+inline constexpr double kDefaultPipelineBinResolutionM = 0.10;
+inline constexpr double kDefaultPipelineRadiusM = 0.25;
+inline constexpr double kDefaultMinimumGapLengthM = 0.15;
 
 /// @brief Represents a 3D coordinate point or spatial vector.
 struct PipePoint3D {
@@ -65,7 +71,7 @@ struct PipelineSegment {
     PipePoint3D end{};
 
     /// @brief Outer radius of the cylindrical pipeline in meters.
-    double radius{0.25};
+    double radius{kDefaultPipelineRadiusM};
 
     /// @brief 3D Euclidean length of the segment in meters.
     double length{0.0};
@@ -84,7 +90,7 @@ struct PipelineSegment {
         const std::string &seg_name,
         const PipePoint3D &p1,
         const PipePoint3D &p2,
-        double r = 0.25
+        double r = kDefaultPipelineRadiusM
     ):
         name(seg_name),
         start(p1),
@@ -200,7 +206,7 @@ class PipelineTracker {
 public:
     /// @brief Constructs a pipeline tracker with a specified spatial bin resolution.
     /// @param bin_resolution_m Discretization arc-length resolution in meters for coverage tracking.
-    explicit PipelineTracker(double bin_resolution_m = 0.10):
+    explicit PipelineTracker(double bin_resolution_m = kDefaultPipelineBinResolutionM):
         bin_resolution_m_(bin_resolution_m),
         total_pipeline_length_(0.0) {}
 
@@ -216,7 +222,11 @@ public:
     /// @param vertex_name Unique identifier for the segment.
     /// @param pt 3D coordinates of the new pipeline vertex.
     /// @param radius Pipe radius in meters.
-    void add_vertex(const std::string &vertex_name, const PipePoint3D &pt, double radius = 0.25) {
+    void add_vertex(
+        const std::string &vertex_name,
+        const PipePoint3D &pt,
+        double radius = kDefaultPipelineRadiusM)
+    {
         if (!vertices_.empty()) {
             PipelineSegment seg(vertex_name, vertices_.back(), pt, radius);
             add_segment(seg);
@@ -326,7 +336,7 @@ public:
         // Heading deviation wrapped to [-PI, +PI]
         double yaw_diff = rov_yaw_rad - active_seg.heading_rad;
         yaw_diff = geometry::wrap_angle(yaw_diff);
-        result.heading_error_deg = std::abs(yaw_diff) * (180.0 / M_PI);
+        result.heading_error_deg = std::abs(yaw_diff) * constants::kRadiansToDegrees;
 
         // Multi-criteria inspection qualification
         result.is_standoff_valid = (result.standoff_altitude_m >= criteria.min_standoff_m) &&
@@ -422,7 +432,9 @@ public:
     /// @brief Extracts continuous uninspected gaps along the pipeline from the discrete coverage bins.
     /// @param min_gap_length_m Minimum gap length in meters to qualify as a reported gap.
     /// @return Ordered list of InspectionGap structs.
-    std::vector<InspectionGap> get_uninspected_gaps(double min_gap_length_m = 0.15) const {
+    std::vector<InspectionGap> get_uninspected_gaps(
+        double min_gap_length_m = kDefaultMinimumGapLengthM) const
+    {
         std::vector<InspectionGap> gaps;
         if (bins_.empty() || total_pipeline_length_ <= 0.0) {
             return gaps;

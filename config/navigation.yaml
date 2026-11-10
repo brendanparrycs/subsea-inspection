@@ -1,0 +1,15 @@
+waypoint_navigator:
+  ros__parameters:
+    heading_tolerance_deg: 20.0
+    surge_kp: 0.5
+    surge_ki: 0.02
+    surge_kd: 0.1
+    surge_max_speed: 0.6
+    heave_kp: 0.8
+    heave_ki: 0.01
+    heave_kd: 0.25
+    heave_max_speed: 0.6
+    yaw_kp: 1.6
+    yaw_ki: 0.01
+    yaw_kd: 0.25
+    yaw_max_speed: 0.6
