@@ -106,8 +106,17 @@ private:
   void spin_once()
   {
     char c = '\0';
-    if (read(STDIN_FILENO, &c, 1) > 0)
-      handle_key(c);
+    ssize_t bytes_read = 0;
+    do {
+      bytes_read = read(STDIN_FILENO, &c, 1);
+      if (bytes_read > 0) {
+        handle_key(c);
+      }
+    } while (bytes_read > 0 && rclcpp::ok());
+
+    if (!rclcpp::ok()) {
+      return;
+    }
 
     const auto now = std::chrono::steady_clock::now();
     if (has_active_key_ && subsea_inspection::input_watchdog::is_stale(

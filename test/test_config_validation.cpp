@@ -42,24 +42,6 @@ TEST(ConfigValidationTest, RoiRequiresFiniteIncreasingBoundsOnEveryAxis)
   EXPECT_FALSE(config_validation::is_valid_roi(invalid_roi));
 }
 
-TEST(ConfigValidationTest, DeadzoneMustBeInHalfOpenUnitInterval)
-{
-  EXPECT_TRUE(config_validation::is_valid_deadzone(0.0));
-  EXPECT_TRUE(config_validation::is_valid_deadzone(0.999));
-  EXPECT_FALSE(config_validation::is_valid_deadzone(-0.01));
-  EXPECT_FALSE(config_validation::is_valid_deadzone(1.0));
-  EXPECT_FALSE(config_validation::is_valid_deadzone(std::numeric_limits<double>::infinity()));
-}
-
-TEST(ConfigValidationTest, JoystickAxisIndicesMustBeNonnegative)
-{
-  EXPECT_TRUE(config_validation::are_valid_joystick_axes(0, 1, 2, 3));
-  EXPECT_FALSE(config_validation::are_valid_joystick_axes(-1, 1, 2, 3));
-  EXPECT_FALSE(config_validation::are_valid_joystick_axes(0, -1, 2, 3));
-  EXPECT_FALSE(config_validation::are_valid_joystick_axes(0, 1, -1, 3));
-  EXPECT_FALSE(config_validation::are_valid_joystick_axes(0, 1, 2, -1));
-}
-
 TEST(ConfigValidationTest, PidGainsMustBeFiniteButMayBeNegative)
 {
   EXPECT_TRUE(config_validation::are_valid_pid_gains(-1.0, 0.0, 2.0));

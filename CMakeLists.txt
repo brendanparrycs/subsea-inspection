@@ -54,12 +54,6 @@ add_executable(keyboard_teleop src/keyboard_teleop.cpp)
 configure_subsea_target(keyboard_teleop)
 target_link_libraries(keyboard_teleop PRIVATE rclcpp::rclcpp geometry_msgs::geometry_msgs)
 
-add_executable(joystick_teleop src/joystick_teleop.cpp)
-configure_subsea_target(joystick_teleop)
-target_link_libraries(joystick_teleop PRIVATE
-  rclcpp::rclcpp geometry_msgs::geometry_msgs sensor_msgs::sensor_msgs
-)
-
 add_executable(waypoint_navigator src/waypoint_navigator.cpp)
 configure_subsea_target(waypoint_navigator)
 target_link_libraries(waypoint_navigator PRIVATE
@@ -113,7 +107,6 @@ set(SUBSEA_INSPECTION_EXECUTABLES
   robot_state_monitor
   motion_controller
   keyboard_teleop
-  joystick_teleop
   waypoint_navigator
   mission_planner
   obstacle_detector

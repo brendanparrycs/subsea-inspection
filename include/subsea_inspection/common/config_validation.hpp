@@ -35,25 +35,6 @@ inline bool is_valid_roi(const RoiBoundingBox &roi)
          std::isfinite(roi.min_z) && std::isfinite(roi.max_z) && roi.min_z < roi.max_z;
 }
 
-/// @brief Checks that a joystick deadzone is in the range [0, 1).
-/// @param deadzone Deadzone fraction to check.
-/// @return True if the deadzone is finite and valid.
-inline bool is_valid_deadzone(double deadzone)
-{
-  return std::isfinite(deadzone) && deadzone >= 0.0 && deadzone < 1.0;
-}
-
-/// @brief Checks that all joystick axis indices are nonnegative.
-/// @param surge Surge axis index.
-/// @param sway Sway axis index.
-/// @param heave Heave axis index.
-/// @param yaw Yaw axis index.
-/// @return True if every index is nonnegative.
-inline bool are_valid_joystick_axes(int surge, int sway, int heave, int yaw)
-{
-  return surge >= 0 && sway >= 0 && heave >= 0 && yaw >= 0;
-}
-
 /// @brief Checks that all PID gains are finite.
 /// @param kp Proportional gain.
 /// @param ki Integral gain.

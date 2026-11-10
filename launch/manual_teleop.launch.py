@@ -2,9 +2,8 @@
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
@@ -12,13 +11,6 @@ from launch_ros.substitutions import FindPackageShare
 def generate_launch_description():
     """Generate the launch description for manual ROV simulation testing."""
     # Launch arguments
-    teleop_arg = DeclareLaunchArgument(
-        'teleop',
-        default_value='keyboard',
-        description='Teleoperation input method: [keyboard, joystick]',
-        choices=['keyboard', 'joystick'],
-    )
-
     start_sim_arg = DeclareLaunchArgument(
         'start_sim',
         default_value='true',
@@ -33,7 +25,6 @@ def generate_launch_description():
         choices=['true', 'false'],
     )
 
-    teleop_choice = LaunchConfiguration('teleop')
     start_sim_choice = LaunchConfiguration('start_sim')
     gui_choice = LaunchConfiguration('gui')
     common_topics_file = PathJoinSubstitution(
@@ -79,9 +70,7 @@ def generate_launch_description():
         )
     )
 
-    # Teleoperation interface nodes
-    # Keyboard Teleop: Launched in a dedicated GNOME Terminal window so raw
-    # keystrokes are captured cleanly without clutter from Gazebo/MAVROS logs.
+    # Launch keyboard teleoperation in a dedicated terminal so raw keystrokes are captured cleanly.
     keyboard_teleop_node = Node(
         package='subsea_inspection',
         executable='keyboard_teleop',
@@ -89,36 +78,14 @@ def generate_launch_description():
         output='screen',
         prefix='gnome-terminal -- ',
         parameters=[common_topics_file, teleop_config_file],
-        condition=IfCondition(PythonExpression(["'", teleop_choice, "' == 'keyboard'"])),
-    )
-
-    # Joystick Teleop: joy driver reads /dev/input/js0 and joystick_teleop translates to /cmd_vel
-    joy_driver_node = Node(
-        package='joy',
-        executable='joy_node',
-        name='joy_node',
-        output='screen',
-        condition=IfCondition(PythonExpression(["'", teleop_choice, "' == 'joystick'"])),
-    )
-
-    joystick_teleop_node = Node(
-        package='subsea_inspection',
-        executable='joystick_teleop',
-        name='joystick_teleop',
-        output='screen',
-        parameters=[common_topics_file, teleop_config_file],
-        condition=IfCondition(PythonExpression(["'", teleop_choice, "' == 'joystick'"])),
     )
 
     return LaunchDescription(
         [
-            teleop_arg,
             start_sim_arg,
             gui_arg,
             posim_simulation,
             autonomy_core,
             keyboard_teleop_node,
-            joy_driver_node,
-            joystick_teleop_node,
         ]
     )
