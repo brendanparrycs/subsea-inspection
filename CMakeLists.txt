@@ -150,6 +150,7 @@ if(BUILD_TESTING)
   add_subsea_gtest(test_geometry_utils test/test_geometry_utils.cpp)
   add_subsea_gtest(test_point_cloud_filter test/test_point_cloud_filter.cpp)
   add_subsea_gtest(test_pipeline_tracker test/test_pipeline_tracker.cpp)
+  add_subsea_gtest(test_config_validation test/test_config_validation.cpp)
 
   # Run ROS linters on build metadata only; source-wide linting will be enabled after the code pass.
   ament_lint_cmake(CMakeLists.txt)

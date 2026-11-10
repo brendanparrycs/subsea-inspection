@@ -16,6 +16,7 @@
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "subsea_inspection/action/navigate_to_waypoint.hpp"
+#include "subsea_inspection/common/config_validation.hpp"
 #include "yaml-cpp/yaml.h"
 
 using namespace std::chrono_literals;
@@ -100,21 +101,21 @@ public:
     avoidance_lateral_offset_ = this->get_parameter("avoidance_lateral_offset").as_double();
     avoidance_cooldown_sec_ = this->get_parameter("avoidance_cooldown_sec").as_double();
 
-    if (avoidance_strategy_ != "fly_over" && avoidance_strategy_ != "lateral_bypass") {
+    if (!subsea_inspection::config_validation::is_valid_avoidance_strategy(avoidance_strategy_)) {
       throw std::invalid_argument(
         "Parameter 'avoidance_strategy' must be 'fly_over' or 'lateral_bypass'");
     }
-    if (!std::isfinite(avoidance_cooldown_sec_) || avoidance_cooldown_sec_ < 0.0) {
+    if (!subsea_inspection::config_validation::is_finite_nonnegative(avoidance_cooldown_sec_)) {
       throw std::invalid_argument("Parameter 'avoidance_cooldown_sec' must be finite and >= 0");
     }
     if (avoidance_strategy_ == "fly_over" &&
-        (!std::isfinite(avoidance_heave_clearance_) || avoidance_heave_clearance_ <= 0.0))
+        !subsea_inspection::config_validation::is_finite_positive(avoidance_heave_clearance_))
     {
       throw std::invalid_argument(
         "Parameter 'avoidance_heave_clearance' must be finite and > 0 for fly_over");
     }
     if (avoidance_strategy_ == "lateral_bypass" &&
-        (!std::isfinite(avoidance_lateral_offset_) || avoidance_lateral_offset_ <= 0.0))
+        !subsea_inspection::config_validation::is_finite_positive(avoidance_lateral_offset_))
     {
       throw std::invalid_argument(
         "Parameter 'avoidance_lateral_offset' must be finite and > 0 for lateral_bypass");
@@ -287,7 +288,7 @@ private:
       mission_name_ = mission_node["name"].as<std::string>("unnamed_mission");
       default_acceptance_radius_ =
         mission_node["default_acceptance_radius"].as<double>(kDefaultMissionAcceptanceRadiusM);
-      if (!std::isfinite(default_acceptance_radius_) || default_acceptance_radius_ <= 0.0) {
+      if (!subsea_inspection::config_validation::is_finite_positive(default_acceptance_radius_)) {
         RCLCPP_ERROR(this->get_logger(),
                      "Mission default_acceptance_radius must be finite and > 0.");
         return false;
@@ -310,20 +311,12 @@ private:
         waypoint.acceptance_radius = wp["acceptance_radius"].as<double>(default_acceptance_radius_);
         waypoint.dwell_sec = wp["dwell_sec"].as<double>(0.0);
 
-        if (!std::isfinite(waypoint.x) || !std::isfinite(waypoint.y) || !std::isfinite(waypoint.z))
+        if (!subsea_inspection::config_validation::is_valid_mission_waypoint(
+              waypoint.x, waypoint.y, waypoint.z, waypoint.acceptance_radius, waypoint.dwell_sec))
         {
-          RCLCPP_ERROR(this->get_logger(), "Waypoint '%s' coordinates must be finite.",
-                       waypoint.name.c_str());
-          return false;
-        }
-        if (!std::isfinite(waypoint.acceptance_radius) || waypoint.acceptance_radius <= 0.0) {
           RCLCPP_ERROR(this->get_logger(),
-                       "Waypoint '%s' acceptance_radius must be finite and > 0.",
-                       waypoint.name.c_str());
-          return false;
-        }
-        if (!std::isfinite(waypoint.dwell_sec) || waypoint.dwell_sec < 0.0) {
-          RCLCPP_ERROR(this->get_logger(), "Waypoint '%s' dwell_sec must be finite and >= 0.",
+                       "Waypoint '%s' must have finite coordinates, positive acceptance radius, "
+                       "and finite non-negative dwell_sec.",
                        waypoint.name.c_str());
           return false;
         }

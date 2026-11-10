@@ -10,6 +10,7 @@
 #include "geometry_msgs/msg/twist.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/joy.hpp"
+#include "subsea_inspection/common/config_validation.hpp"
 
 namespace
 {
@@ -30,28 +31,6 @@ constexpr auto kJoyTopic = "/joy";
 constexpr std::chrono::milliseconds kPublishPeriod{100};
 constexpr std::size_t kQueueDepth = 10;
 constexpr auto kDefaultCmdVelTopic = "/cmd_vel";
-
-void validate_joystick_parameters(int surge_axis, int sway_axis, int heave_axis, int yaw_axis,
-                                  double deadzone, double max_linear_speed_mps,
-                                  double max_heave_speed_mps, double max_angular_speed_radps,
-                                  double joy_timeout_sec)
-{
-  if (surge_axis < 0 || sway_axis < 0 || heave_axis < 0 || yaw_axis < 0) {
-    throw std::invalid_argument("Joystick axis indices must be non-negative");
-  }
-  if (!std::isfinite(deadzone) || deadzone < 0.0 || deadzone >= 1.0) {
-    throw std::invalid_argument("Parameter 'deadzone' must be finite and in [0, 1)");
-  }
-  if (!std::isfinite(max_linear_speed_mps) || max_linear_speed_mps < 0.0 ||
-      !std::isfinite(max_heave_speed_mps) || max_heave_speed_mps < 0.0 ||
-      !std::isfinite(max_angular_speed_radps) || max_angular_speed_radps < 0.0)
-  {
-    throw std::invalid_argument("Joystick speed limits must be finite and non-negative");
-  }
-  if (!std::isfinite(joy_timeout_sec) || joy_timeout_sec <= 0.0) {
-    throw std::invalid_argument("Parameter 'joy_timeout' must be finite and > 0");
-  }
-}
 }  // namespace
 
 /// @brief Translates gamepad sensor_msgs/msg/Joy axis and button states into
@@ -102,9 +81,23 @@ public:
     joy_timeout_sec_ = this->get_parameter("joy_timeout").as_double();
     const auto cmd_vel_topic = this->get_parameter("cmd_vel_topic").as_string();
 
-    validate_joystick_parameters(axis_surge_, axis_sway_, axis_heave_, axis_yaw_, deadzone_,
-                                 max_linear_speed_, max_heave_speed_, max_angular_speed_,
-                                 joy_timeout_sec_);
+    if (!subsea_inspection::config_validation::are_valid_joystick_axes(axis_surge_, axis_sway_,
+                                                                       axis_heave_, axis_yaw_))
+    {
+      throw std::invalid_argument("Joystick axis indices must be non-negative");
+    }
+    if (!subsea_inspection::config_validation::is_valid_deadzone(deadzone_)) {
+      throw std::invalid_argument("Parameter 'deadzone' must be finite and in [0, 1)");
+    }
+    if (!subsea_inspection::config_validation::is_finite_nonnegative(max_linear_speed_) ||
+        !subsea_inspection::config_validation::is_finite_nonnegative(max_heave_speed_) ||
+        !subsea_inspection::config_validation::is_finite_nonnegative(max_angular_speed_))
+    {
+      throw std::invalid_argument("Joystick speed limits must be finite and non-negative");
+    }
+    if (!subsea_inspection::config_validation::is_finite_positive(joy_timeout_sec_)) {
+      throw std::invalid_argument("Parameter 'joy_timeout' must be finite and > 0");
+    }
 
     // Subscribe to /joy topic from joy_node
     joy_subscription_ = this->create_subscription<sensor_msgs::msg::Joy>(

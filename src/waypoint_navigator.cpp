@@ -11,6 +11,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "subsea_inspection/action/navigate_to_waypoint.hpp"
+#include "subsea_inspection/common/config_validation.hpp"
 #include "subsea_inspection/common/constants.hpp"
 #include "subsea_inspection/geometry_utils.hpp"
 #include "subsea_inspection/pid_controller.hpp"
@@ -48,10 +49,10 @@ constexpr double kPidIntegralLimit = 0.5;
 void validate_pid_parameters(double kp, double ki, double kd, double max_speed,
                              const std::string &controller_name)
 {
-  if (!std::isfinite(kp) || !std::isfinite(ki) || !std::isfinite(kd)) {
+  if (!subsea_inspection::config_validation::are_valid_pid_gains(kp, ki, kd)) {
     throw std::invalid_argument(controller_name + " PID gains must be finite");
   }
-  if (!std::isfinite(max_speed) || max_speed < 0.0) {
+  if (!subsea_inspection::config_validation::is_finite_nonnegative(max_speed)) {
     throw std::invalid_argument(controller_name + " maximum speed must be finite and non-negative");
   }
 }
@@ -135,9 +136,7 @@ private:
   void load_parameters()
   {
     double heading_tolerance_deg = this->get_parameter("heading_tolerance_deg").as_double();
-    if (!std::isfinite(heading_tolerance_deg) || heading_tolerance_deg <= 0.0 ||
-        heading_tolerance_deg > 180.0)
-    {
+    if (!subsea_inspection::config_validation::is_valid_heading_tolerance(heading_tolerance_deg)) {
       throw std::invalid_argument("Parameter 'heading_tolerance_deg' must be in (0, 180]");
     }
 
@@ -181,14 +180,14 @@ private:
                 "Received goal request: [X: %.2f, Y: %.2f, Z: %.2f, Radius: %.2f]", goal->target_x,
                 goal->target_y, goal->target_z, goal->acceptance_radius);
 
-    if (!std::isfinite(goal->target_x) || !std::isfinite(goal->target_y) ||
-        !std::isfinite(goal->target_z))
+    if (!subsea_inspection::config_validation::are_valid_waypoint_coordinates(
+          goal->target_x, goal->target_y, goal->target_z))
     {
       RCLCPP_WARN(this->get_logger(), "Rejected goal: target coordinates must be finite");
       return rclcpp_action::GoalResponse::REJECT;
     }
 
-    if (!std::isfinite(goal->acceptance_radius) || goal->acceptance_radius <= 0.0) {
+    if (!subsea_inspection::config_validation::is_finite_positive(goal->acceptance_radius)) {
       RCLCPP_WARN(this->get_logger(), "Rejected goal: acceptance_radius must be finite and > 0.0");
       return rclcpp_action::GoalResponse::REJECT;
     }

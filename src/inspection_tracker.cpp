@@ -20,6 +20,7 @@
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/header.hpp"
 #include "std_srvs/srv/trigger.hpp"
+#include "subsea_inspection/common/config_validation.hpp"
 #include "subsea_inspection/geometry_utils.hpp"
 #include "subsea_inspection/pipeline_tracker.hpp"
 #include "tf2/LinearMath/Matrix3x3.hpp"
@@ -82,26 +83,13 @@ public:
     criteria_.max_cross_track_m = this->get_parameter("max_cross_track").as_double();
     criteria_.max_heading_error_deg = this->get_parameter("max_heading_error_deg").as_double();
 
-    if (!std::isfinite(standoff_height_) || standoff_height_ <= 0.0) {
-      throw std::invalid_argument("Parameter 'standoff_height' must be finite and > 0");
-    }
-    if (!std::isfinite(bin_resolution_) || bin_resolution_ <= 0.0) {
-      throw std::invalid_argument("Parameter 'bin_resolution' must be finite and > 0");
-    }
-    if (!std::isfinite(criteria_.min_standoff_m) || criteria_.min_standoff_m < 0.0 ||
-        !std::isfinite(criteria_.max_standoff_m) ||
-        criteria_.max_standoff_m < criteria_.min_standoff_m)
+    if (!subsea_inspection::config_validation::is_valid_inspection_configuration(
+          standoff_height_, bin_resolution_, criteria_.min_standoff_m, criteria_.max_standoff_m,
+          criteria_.max_cross_track_m, criteria_.max_heading_error_deg))
     {
       throw std::invalid_argument(
-        "Inspection standoff limits must be finite, non-negative, and min <= max");
-    }
-    if (!std::isfinite(criteria_.max_cross_track_m) || criteria_.max_cross_track_m < 0.0) {
-      throw std::invalid_argument("Parameter 'max_cross_track' must be finite and >= 0");
-    }
-    if (!std::isfinite(criteria_.max_heading_error_deg) || criteria_.max_heading_error_deg < 0.0 ||
-        criteria_.max_heading_error_deg > 180.0)
-    {
-      throw std::invalid_argument("Parameter 'max_heading_error_deg' must be in [0, 180]");
+        "Inspection settings require positive standoff/bin resolution, finite non-negative "
+        "limits, min standoff <= max standoff, and heading error <= 180 degrees");
     }
 
     // Initialize geometric tracker
