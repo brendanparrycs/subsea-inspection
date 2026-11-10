@@ -22,10 +22,6 @@ namespace geometry = subsea_inspection::geometry;
 
 namespace
 {
-constexpr double kDefaultTargetXM = 5.0;
-constexpr double kDefaultTargetYM = 0.0;
-constexpr double kDefaultTargetZM = -2.0;
-constexpr double kDefaultAcceptanceRadiusM = 1.0;
 constexpr double kDefaultHeadingToleranceDeg = 20.0;
 
 constexpr double kDefaultSurgeKp = 0.5;
@@ -63,15 +59,10 @@ public:
     target_x_(0.0),
     target_y_(0.0),
     target_z_(0.0),
-    acceptance_radius_(kDefaultAcceptanceRadiusM),
+    acceptance_radius_(0.0),
     has_odometry_(false),
     has_active_goal_(false)
   {
-    // Default target coordinates / tolerances
-    this->declare_parameter<double>("target_x", kDefaultTargetXM);
-    this->declare_parameter<double>("target_y", kDefaultTargetYM);
-    this->declare_parameter<double>("target_z", kDefaultTargetZM);
-    this->declare_parameter<double>("acceptance_radius", kDefaultAcceptanceRadiusM);
     this->declare_parameter<std::string>("odom_topic", "/model/bluerov2_heavy/odometry");
     this->declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel");
 
@@ -131,11 +122,6 @@ private:
   /// @brief Loads parameters and initializes PID controllers.
   void load_parameters()
   {
-    target_x_ = this->get_parameter("target_x").as_double();
-    target_y_ = this->get_parameter("target_y").as_double();
-    target_z_ = this->get_parameter("target_z").as_double();
-    acceptance_radius_ = this->get_parameter("acceptance_radius").as_double();
-
     double heading_tolerance_deg = this->get_parameter("heading_tolerance_deg").as_double();
     heading_tolerance_rad_ =
       heading_tolerance_deg * subsea_inspection::constants::kDegreesToRadians;
