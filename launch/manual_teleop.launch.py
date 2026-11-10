@@ -40,44 +40,28 @@ def generate_launch_description():
     start_sim_choice = LaunchConfiguration("start_sim")
     gui_choice = LaunchConfiguration("gui")
 
-    # Launch POSIM ocean waves simulation
+    # Shared POSIM demo simulation and core vehicle nodes.
     posim_simulation = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([
-                FindPackageShare("posim_demos"),
+                FindPackageShare("subsea_inspection"),
                 "launch",
-                "posim_robot.launch.py"
+                "includes",
+                "posim_demo_simulation.launch.py",
             ])
         ),
-        launch_arguments={
-            "namespace": "bluerov2_heavy",
-            "world_name": "posim_ocean_waves",
-            "paused": "false",
-            "gui": gui_choice,
-            "headless": "false",
-            "use_teleop": "false",
-            "use_web_joystick": "false",
-            "open_qgc": "false",
-            "open_virtual_joystick": "false"
-        }.items(),
-        condition=IfCondition(start_sim_choice)
+        launch_arguments={"start_sim": start_sim_choice, "gui": gui_choice}.items(),
     )
 
-    # Subsea autonomy core nodes
-    motion_controller_node = Node(
-        package="subsea_inspection",
-        executable="motion_controller",
-        name="motion_controller",
-        output="screen",
-        parameters=[{ "use_sim_time": True }]
-    )
-
-    robot_state_monitor_node = Node(
-        package="subsea_inspection",
-        executable="robot_state_monitor",
-        name="robot_state_monitor",
-        output="screen",
-        parameters=[{ "use_sim_time": True }]
+    autonomy_core = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([
+                FindPackageShare("subsea_inspection"),
+                "launch",
+                "includes",
+                "autonomy_core.launch.py",
+            ])
+        )
     )
 
     # Teleoperation interface nodes
@@ -120,8 +104,7 @@ def generate_launch_description():
         start_sim_arg,
         gui_arg,
         posim_simulation,
-        motion_controller_node,
-        robot_state_monitor_node,
+        autonomy_core,
         keyboard_teleop_node,
         joy_driver_node,
         joystick_teleop_node,

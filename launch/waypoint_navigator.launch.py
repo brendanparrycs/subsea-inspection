@@ -5,7 +5,6 @@ Launches the simulation, motion controller, robot state monitor, and waypoint na
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
@@ -60,44 +59,28 @@ def generate_launch_description():
     target_z_choice = LaunchConfiguration("target_z")
     acceptance_radius_choice = LaunchConfiguration("acceptance_radius")
 
-    # Launch POSIM ocean waves simulation
+    # Shared POSIM demo simulation and core vehicle nodes.
     posim_simulation = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([
-                FindPackageShare("posim_demos"),
+                FindPackageShare("subsea_inspection"),
                 "launch",
-                "posim_robot.launch.py"
+                "includes",
+                "posim_demo_simulation.launch.py",
             ])
         ),
-        launch_arguments={
-            "namespace": "bluerov2_heavy",
-            "world_name": "posim_ocean_waves",
-            "paused": "false",
-            "gui": gui_choice,
-            "headless": "false",
-            "use_teleop": "false",
-            "use_web_joystick": "false",
-            "open_qgc": "false",
-            "open_virtual_joystick": "false"
-        }.items(),
-        condition=IfCondition(start_sim_choice)
+        launch_arguments={"start_sim": start_sim_choice, "gui": gui_choice}.items(),
     )
 
-    # Subsea autonomy core nodes
-    motion_controller_node = Node(
-        package="subsea_inspection",
-        executable="motion_controller",
-        name="motion_controller",
-        output="screen",
-        parameters=[{ "use_sim_time": True }]
-    )
-
-    robot_state_monitor_node = Node(
-        package="subsea_inspection",
-        executable="robot_state_monitor",
-        name="robot_state_monitor",
-        output="screen",
-        parameters=[{ "use_sim_time": True }]
+    autonomy_core = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([
+                FindPackageShare("subsea_inspection"),
+                "launch",
+                "includes",
+                "autonomy_core.launch.py",
+            ])
+        )
     )
 
     # Autonomous waypoint navigation node
@@ -123,7 +106,6 @@ def generate_launch_description():
         target_z_arg,
         acceptance_radius_arg,
         posim_simulation,
-        motion_controller_node,
-        robot_state_monitor_node,
+        autonomy_core,
         waypoint_navigator_node,
     ])
