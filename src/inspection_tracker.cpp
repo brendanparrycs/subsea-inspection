@@ -1,9 +1,12 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <ctime>
+#include <exception>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <memory>
 #include <sstream>
@@ -14,6 +17,7 @@
 #include "nav_msgs/msg/odometry.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/bool.hpp"
+#include "std_msgs/msg/header.hpp"
 #include "std_srvs/srv/trigger.hpp"
 #include "subsea_inspection/geometry_utils.hpp"
 #include "subsea_inspection/pipeline_tracker.hpp"
@@ -143,7 +147,7 @@ private:
       const auto waypoints = root["mission"]["waypoints"];
       tracker_->clear();
 
-      for (size_t i = 0; i < waypoints.size(); ++i) {
+      for (std::size_t i = 0; i < waypoints.size(); ++i) {
         double wx = waypoints[i]["x"].as<double>(0.0);
         double wy = waypoints[i]["y"].as<double>(0.0);
         double wz = waypoints[i]["z"].as<double>(kDefaultPipelineVertexDepthM);

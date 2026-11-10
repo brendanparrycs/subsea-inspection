@@ -1,7 +1,10 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
+#include <exception>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>

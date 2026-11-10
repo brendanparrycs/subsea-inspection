@@ -1,7 +1,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <functional>
 #include <memory>
+#include <string>
 
 #include "nav_msgs/msg/odometry.hpp"
 #include "rclcpp/rclcpp.hpp"

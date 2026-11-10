@@ -4,7 +4,10 @@
 
 #include "subsea_inspection/pipeline_tracker.hpp"
 
-using namespace subsea_inspection;
+using subsea_inspection::InspectionCriteria;
+using subsea_inspection::PipelineTracker;
+using subsea_inspection::PipePoint3D;
+using subsea_inspection::Point3D;
 
 /// @brief Verifies that an empty tracker safely returns default results without crashing.
 TEST(PipelineTrackerTest, HandlesEmptyTracker)

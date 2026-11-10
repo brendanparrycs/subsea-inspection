@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "subsea_inspection/common/constants.hpp"
@@ -136,7 +137,7 @@ struct InspectionCriteria
 struct TrackingResult
 {
   /// @brief Index of the nearest active pipeline segment in the pipeline model.
-  size_t active_segment_index{0};
+  std::size_t active_segment_index{0};
 
   /// @brief Identifier of the nearest active pipeline segment.
   std::string active_segment_name{};
@@ -184,7 +185,7 @@ struct TrackingResult
 struct InspectionGap
 {
   /// @brief Sequential gap index number (1-based).
-  size_t gap_id{0};
+  std::size_t gap_id{0};
 
   /// @brief Starting cumulative arc-length position along the pipeline in meters.
   double start_s_m{0.0};
@@ -196,7 +197,7 @@ struct InspectionGap
   double length_m{0.0};
 
   /// @brief Index of the pipeline segment containing or nearest to the gap start.
-  size_t segment_index{0};
+  std::size_t segment_index{0};
 
   /// @brief Descriptive identifier of the pipeline segment containing the gap start.
   std::string segment_name{};
@@ -206,7 +207,7 @@ struct InspectionGap
 struct SegmentCoverage
 {
   /// @brief Index of the pipeline segment (0-based).
-  size_t index{0};
+  std::size_t index{0};
 
   /// @brief Descriptive identifier of the segment.
   std::string name{};
@@ -285,13 +286,13 @@ public:
     }
 
     double best_dist_sq = std::numeric_limits<double>::infinity();
-    size_t best_idx = 0;
+    std::size_t best_idx = 0;
     PipePoint3D best_proj;
     double best_s = 0.0;
     double accumulated_len = 0.0;
     double best_accumulated_start = 0.0;
 
-    for (size_t i = 0; i < segments_.size(); ++i) {
+    for (std::size_t i = 0; i < segments_.size(); ++i) {
       const auto &seg = segments_[i];
       if (seg.length <= 1e-4) {
         accumulated_len += seg.length;
@@ -368,7 +369,7 @@ public:
 
     // Mark discrete coverage bin if criteria are met
     if (result.is_inspected && !bins_.empty()) {
-      size_t bin_idx = static_cast<size_t>(result.total_arc_length_m / bin_resolution_m_);
+      std::size_t bin_idx = static_cast<std::size_t>(result.total_arc_length_m / bin_resolution_m_);
       if (bin_idx < bins_.size()) {
         bins_[bin_idx] = true;
       }
@@ -383,7 +384,7 @@ public:
   {
     if (bins_.empty())
       return 0.0;
-    size_t inspected_count = 0;
+    std::size_t inspected_count = 0;
     for (bool b : bins_) {
       if (b)
         inspected_count++;
@@ -397,7 +398,7 @@ public:
   {
     if (bins_.empty() || total_pipeline_length_ <= 0.0)
       return 0.0;
-    size_t inspected_count = 0;
+    std::size_t inspected_count = 0;
     for (bool b : bins_) {
       if (b)
         inspected_count++;
@@ -415,7 +416,7 @@ public:
 
   /// @brief Gets the number of registered pipeline segments.
   /// @return Total segment count.
-  size_t get_segment_count() const
+  std::size_t get_segment_count() const
   {
     return segments_.size();
   }
@@ -444,13 +445,13 @@ public:
   /// @brief Finds the segment index and name containing a given cumulative arc-length.
   /// @param s Cumulative arc-length in meters.
   /// @return Pair of segment index and segment descriptive name.
-  std::pair<size_t, std::string> find_segment_for_arc_length(double s) const
+  std::pair<std::size_t, std::string> find_segment_for_arc_length(double s) const
   {
     if (segments_.empty()) {
       return {0, ""};
     }
     double accumulated = 0.0;
-    for (size_t i = 0; i < segments_.size(); ++i) {
+    for (std::size_t i = 0; i < segments_.size(); ++i) {
       accumulated += segments_[i].length;
       if (s <= accumulated || i == segments_.size() - 1) {
         return {i, segments_[i].name};
@@ -471,11 +472,11 @@ public:
       return gaps;
     }
 
-    size_t gap_count = 0;
+    std::size_t gap_count = 0;
     bool in_gap = false;
-    size_t gap_start_bin = 0;
+    std::size_t gap_start_bin = 0;
 
-    for (size_t i = 0; i < bins_.size(); ++i) {
+    for (std::size_t i = 0; i < bins_.size(); ++i) {
       if (!bins_[i]) {
         if (!in_gap) {
           in_gap = true;
@@ -537,7 +538,7 @@ public:
     }
 
     double accumulated_s = 0.0;
-    for (size_t i = 0; i < segments_.size(); ++i) {
+    for (std::size_t i = 0; i < segments_.size(); ++i) {
       const auto &seg = segments_[i];
       SegmentCoverage sc;
       sc.index = i;
@@ -548,15 +549,15 @@ public:
       double seg_end_s = accumulated_s + seg.length;
 
       if (seg.length > 1e-4 && !bins_.empty()) {
-        size_t start_bin = static_cast<size_t>(seg_start_s / bin_resolution_m_);
-        size_t end_bin = static_cast<size_t>(std::ceil(seg_end_s / bin_resolution_m_));
+        std::size_t start_bin = static_cast<std::size_t>(seg_start_s / bin_resolution_m_);
+        std::size_t end_bin = static_cast<std::size_t>(std::ceil(seg_end_s / bin_resolution_m_));
         start_bin = std::min(start_bin, bins_.size());
         end_bin = std::min(end_bin, bins_.size());
 
-        size_t seg_bins_total = (end_bin > start_bin) ? (end_bin - start_bin) : 0;
-        size_t seg_bins_inspected = 0;
+        std::size_t seg_bins_total = (end_bin > start_bin) ? (end_bin - start_bin) : 0;
+        std::size_t seg_bins_inspected = 0;
 
-        for (size_t b = start_bin; b < end_bin; ++b) {
+        for (std::size_t b = start_bin; b < end_bin; ++b) {
           if (bins_[b]) {
             seg_bins_inspected++;
           }
@@ -583,7 +584,8 @@ private:
   {
     if (bin_resolution_m_ <= 0.0 || total_pipeline_length_ <= 0.0)
       return;
-    size_t num_bins = static_cast<size_t>(std::ceil(total_pipeline_length_ / bin_resolution_m_));
+    std::size_t num_bins =
+      static_cast<std::size_t>(std::ceil(total_pipeline_length_ / bin_resolution_m_));
     bins_.assign(num_bins, false);
   }
 

@@ -1,5 +1,6 @@
 """Launch Gazebo, the sensor-equipped vehicle, and its POSIM robot config."""
 
+from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
     IncludeLaunchDescription,
@@ -12,8 +13,6 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-
-from launch import LaunchDescription
 
 VEHICLE_SPAWN_X_M = 0.0
 VEHICLE_SPAWN_Y_M = 0.0

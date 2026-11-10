@@ -50,7 +50,7 @@ struct RoiBoundingBox
   double min_z{-0.20};  // Bottom safety corridor boundary
   double max_z{0.30};   // Top safety corridor boundary
 
-  /// @brief Tests if a given 3D point lies strictly within the bounding box.
+  /// @brief Tests if a given 3D point lies inside or on the bounding box boundary.
   /// @param point Point to evaluate.
   /// @return True if point is valid and inside bounding box.
   bool contains(const Point3D &point) const
@@ -62,7 +62,7 @@ struct RoiBoundingBox
   }
 };
 
-/// @brief Summary reult of safety corridor filtering.
+/// @brief Summary result of safety corridor filtering.
 struct FilterResult
 {
   std::vector<Point3D> corridor_points{};

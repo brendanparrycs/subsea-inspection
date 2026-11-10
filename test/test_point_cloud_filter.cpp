@@ -6,7 +6,9 @@
 
 #include "subsea_inspection/point_cloud_filter.hpp"
 
-using namespace subsea_inspection;
+using subsea_inspection::filter_corridor;
+using subsea_inspection::Point3D;
+using subsea_inspection::RoiBoundingBox;
 
 /// @brief Verifies that an empty point cloud produces no detections and infinite distance.
 TEST(PointCloudFilterTest, EmptyCloudReturnsInfinity)

@@ -1,8 +1,7 @@
 """Bridge the simulated depth point cloud and publish the camera transform."""
 
-from launch_ros.actions import Node
-
 from launch import LaunchDescription
+from launch_ros.actions import Node
 
 DEPTH_CAMERA_X_M = 0.19
 DEPTH_CAMERA_Y_M = 0.0

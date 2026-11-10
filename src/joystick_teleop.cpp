@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -112,7 +113,7 @@ private:
   double get_axis_value(const sensor_msgs::msg::Joy::SharedPtr &msg, int axis_index,
                         bool invert) const
   {
-    if (axis_index < 0 || static_cast<size_t>(axis_index) >= msg->axes.size()) {
+    if (axis_index < 0 || static_cast<std::size_t>(axis_index) >= msg->axes.size()) {
       return 0.0;
     }
 

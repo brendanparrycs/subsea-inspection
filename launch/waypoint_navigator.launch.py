@@ -3,13 +3,12 @@ Launch file for autonomous waypoint navigation of BlueROV2 Heavy in POSIM Gazebo
 Launches the simulation, motion controller, robot state monitor, and waypoint navigator.
 """
 
+from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-
-from launch import LaunchDescription
 
 
 def generate_launch_description():

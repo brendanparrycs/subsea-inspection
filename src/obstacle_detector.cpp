@@ -1,4 +1,5 @@
 #include <cmath>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -7,6 +8,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "sensor_msgs/point_cloud2_iterator.hpp"
+#include "std_msgs/msg/header.hpp"
 #include "subsea_inspection/point_cloud_filter.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
 
@@ -59,7 +61,7 @@ public:
     qos_profile.best_effort();
     qos_profile.durability(rclcpp::DurabilityPolicy::Volatile);
 
-    // Publishers for neareset obstacle position and RViz visualization markers
+    // Publishers for nearest obstacle position and RViz visualization markers
     closest_point_publisher_ =
       this->create_publisher<geometry_msgs::msg::PointStamped>(closest_point_topic_, 10);
 
@@ -162,7 +164,7 @@ private:
 
     marker_array.markers.push_back(box_marker);
 
-    // 2. Closeset obstacle sphere marker
+    // 2. Closest obstacle sphere marker
     visualization_msgs::msg::Marker obstacle_marker;
     obstacle_marker.header = header;
     obstacle_marker.ns = "closest_obstacle";
