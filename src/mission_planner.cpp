@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -98,6 +99,26 @@ public:
     avoidance_heave_clearance_ = this->get_parameter("avoidance_heave_clearance").as_double();
     avoidance_lateral_offset_ = this->get_parameter("avoidance_lateral_offset").as_double();
     avoidance_cooldown_sec_ = this->get_parameter("avoidance_cooldown_sec").as_double();
+
+    if (avoidance_strategy_ != "fly_over" && avoidance_strategy_ != "lateral_bypass") {
+      throw std::invalid_argument(
+        "Parameter 'avoidance_strategy' must be 'fly_over' or 'lateral_bypass'");
+    }
+    if (!std::isfinite(avoidance_cooldown_sec_) || avoidance_cooldown_sec_ < 0.0) {
+      throw std::invalid_argument("Parameter 'avoidance_cooldown_sec' must be finite and >= 0");
+    }
+    if (avoidance_strategy_ == "fly_over" &&
+        (!std::isfinite(avoidance_heave_clearance_) || avoidance_heave_clearance_ <= 0.0))
+    {
+      throw std::invalid_argument(
+        "Parameter 'avoidance_heave_clearance' must be finite and > 0 for fly_over");
+    }
+    if (avoidance_strategy_ == "lateral_bypass" &&
+        (!std::isfinite(avoidance_lateral_offset_) || avoidance_lateral_offset_ <= 0.0))
+    {
+      throw std::invalid_argument(
+        "Parameter 'avoidance_lateral_offset' must be finite and > 0 for lateral_bypass");
+    }
 
     if (mission_file_.empty()) {
       RCLCPP_ERROR(this->get_logger(), "Parameter 'mission_file' is empty! Cannot proceed.");
@@ -266,6 +287,11 @@ private:
       mission_name_ = mission_node["name"].as<std::string>("unnamed_mission");
       default_acceptance_radius_ =
         mission_node["default_acceptance_radius"].as<double>(kDefaultMissionAcceptanceRadiusM);
+      if (!std::isfinite(default_acceptance_radius_) || default_acceptance_radius_ <= 0.0) {
+        RCLCPP_ERROR(this->get_logger(),
+                     "Mission default_acceptance_radius must be finite and > 0.");
+        return false;
+      }
 
       YAML::Node waypoints_node = mission_node["waypoints"];
       if (!waypoints_node || !waypoints_node.IsSequence()) {
@@ -283,6 +309,24 @@ private:
         waypoint.z = wp["z"].as<double>(kDefaultInitialDepthM);
         waypoint.acceptance_radius = wp["acceptance_radius"].as<double>(default_acceptance_radius_);
         waypoint.dwell_sec = wp["dwell_sec"].as<double>(0.0);
+
+        if (!std::isfinite(waypoint.x) || !std::isfinite(waypoint.y) || !std::isfinite(waypoint.z))
+        {
+          RCLCPP_ERROR(this->get_logger(), "Waypoint '%s' coordinates must be finite.",
+                       waypoint.name.c_str());
+          return false;
+        }
+        if (!std::isfinite(waypoint.acceptance_radius) || waypoint.acceptance_radius <= 0.0) {
+          RCLCPP_ERROR(this->get_logger(),
+                       "Waypoint '%s' acceptance_radius must be finite and > 0.",
+                       waypoint.name.c_str());
+          return false;
+        }
+        if (!std::isfinite(waypoint.dwell_sec) || waypoint.dwell_sec < 0.0) {
+          RCLCPP_ERROR(this->get_logger(), "Waypoint '%s' dwell_sec must be finite and >= 0.",
+                       waypoint.name.c_str());
+          return false;
+        }
 
         waypoints_.push_back(waypoint);
       }

@@ -3,6 +3,7 @@
 #include <cmath>
 #include <functional>
 #include <memory>
+#include <stdexcept>
 #include <string>
 
 #include "geometry_msgs/msg/twist.hpp"
@@ -43,6 +44,17 @@ constexpr double kCloseRangeDistanceM = 0.6;
 constexpr double kCloseRangeHeadingToleranceDeg = 20.0;
 constexpr double kMaximumControlStepSec = 1.0;
 constexpr double kPidIntegralLimit = 0.5;
+
+void validate_pid_parameters(double kp, double ki, double kd, double max_speed,
+                             const std::string &controller_name)
+{
+  if (!std::isfinite(kp) || !std::isfinite(ki) || !std::isfinite(kd)) {
+    throw std::invalid_argument(controller_name + " PID gains must be finite");
+  }
+  if (!std::isfinite(max_speed) || max_speed < 0.0) {
+    throw std::invalid_argument(controller_name + " maximum speed must be finite and non-negative");
+  }
+}
 }  // namespace
 
 using NavigateToWaypoint = subsea_inspection::action::NavigateToWaypoint;
@@ -123,24 +135,38 @@ private:
   void load_parameters()
   {
     double heading_tolerance_deg = this->get_parameter("heading_tolerance_deg").as_double();
+    if (!std::isfinite(heading_tolerance_deg) || heading_tolerance_deg <= 0.0 ||
+        heading_tolerance_deg > 180.0)
+    {
+      throw std::invalid_argument("Parameter 'heading_tolerance_deg' must be in (0, 180]");
+    }
+
+    const double surge_kp = this->get_parameter("surge_kp").as_double();
+    const double surge_ki = this->get_parameter("surge_ki").as_double();
+    const double surge_kd = this->get_parameter("surge_kd").as_double();
+    const double surge_max_speed = this->get_parameter("surge_max_speed").as_double();
+    const double heave_kp = this->get_parameter("heave_kp").as_double();
+    const double heave_ki = this->get_parameter("heave_ki").as_double();
+    const double heave_kd = this->get_parameter("heave_kd").as_double();
+    const double heave_max_speed = this->get_parameter("heave_max_speed").as_double();
+    const double yaw_kp = this->get_parameter("yaw_kp").as_double();
+    const double yaw_ki = this->get_parameter("yaw_ki").as_double();
+    const double yaw_kd = this->get_parameter("yaw_kd").as_double();
+    const double yaw_max_speed = this->get_parameter("yaw_max_speed").as_double();
+
+    validate_pid_parameters(surge_kp, surge_ki, surge_kd, surge_max_speed, "Surge");
+    validate_pid_parameters(heave_kp, heave_ki, heave_kd, heave_max_speed, "Heave");
+    validate_pid_parameters(yaw_kp, yaw_ki, yaw_kd, yaw_max_speed, "Yaw");
+
     heading_tolerance_rad_ =
       heading_tolerance_deg * subsea_inspection::constants::kDegreesToRadians;
 
     // Initialize PID controllers
-    surge_pid_ = PidController(
-      this->get_parameter("surge_kp").as_double(), this->get_parameter("surge_ki").as_double(),
-      this->get_parameter("surge_kd").as_double(),
-      this->get_parameter("surge_max_speed").as_double(), kPidIntegralLimit);
+    surge_pid_ = PidController(surge_kp, surge_ki, surge_kd, surge_max_speed, kPidIntegralLimit);
 
-    heave_pid_ = PidController(
-      this->get_parameter("heave_kp").as_double(), this->get_parameter("heave_ki").as_double(),
-      this->get_parameter("heave_kd").as_double(),
-      this->get_parameter("heave_max_speed").as_double(), kPidIntegralLimit);
+    heave_pid_ = PidController(heave_kp, heave_ki, heave_kd, heave_max_speed, kPidIntegralLimit);
 
-    yaw_pid_ = PidController(this->get_parameter("yaw_kp").as_double(),
-                             this->get_parameter("yaw_ki").as_double(),
-                             this->get_parameter("yaw_kd").as_double(),
-                             this->get_parameter("yaw_max_speed").as_double(), kPidIntegralLimit);
+    yaw_pid_ = PidController(yaw_kp, yaw_ki, yaw_kd, yaw_max_speed, kPidIntegralLimit);
   }
 
   /// @brief Evaluates whether to accept or reject an incoming goal request.
@@ -155,8 +181,15 @@ private:
                 "Received goal request: [X: %.2f, Y: %.2f, Z: %.2f, Radius: %.2f]", goal->target_x,
                 goal->target_y, goal->target_z, goal->acceptance_radius);
 
-    if (goal->acceptance_radius <= 0.0) {
-      RCLCPP_WARN(this->get_logger(), "Rejected goal: acceptance_radius must be > 0.0");
+    if (!std::isfinite(goal->target_x) || !std::isfinite(goal->target_y) ||
+        !std::isfinite(goal->target_z))
+    {
+      RCLCPP_WARN(this->get_logger(), "Rejected goal: target coordinates must be finite");
+      return rclcpp_action::GoalResponse::REJECT;
+    }
+
+    if (!std::isfinite(goal->acceptance_radius) || goal->acceptance_radius <= 0.0) {
+      RCLCPP_WARN(this->get_logger(), "Rejected goal: acceptance_radius must be finite and > 0.0");
       return rclcpp_action::GoalResponse::REJECT;
     }
 

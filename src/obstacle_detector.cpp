@@ -1,6 +1,7 @@
 #include <cmath>
 #include <functional>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -20,6 +21,24 @@ using subsea_inspection::RoiBoundingBox;
 namespace
 {
 constexpr double kObstacleMarkerDiameterM = 0.25;
+
+void validate_roi_and_threshold(const RoiBoundingBox &roi, double detection_threshold_m)
+{
+  const double bounds[] = {roi.min_x, roi.max_x, roi.min_y, roi.max_y, roi.min_z, roi.max_z};
+  for (const double bound : bounds) {
+    if (!std::isfinite(bound)) {
+      throw std::invalid_argument("Obstacle ROI bounds must all be finite");
+    }
+  }
+
+  if (roi.min_x >= roi.max_x || roi.min_y >= roi.max_y || roi.min_z >= roi.max_z) {
+    throw std::invalid_argument("Each obstacle ROI minimum must be less than its maximum");
+  }
+
+  if (!std::isfinite(detection_threshold_m) || detection_threshold_m <= 0.0) {
+    throw std::invalid_argument("Parameter 'detection_threshold' must be finite and > 0");
+  }
+}
 }  // namespace
 
 /// @brief ROS 2 node subscribe to live 3D depth point clouds, filtering for a forward
@@ -55,6 +74,8 @@ public:
     roi_.min_z = this->get_parameter("min_z").as_double();
     roi_.max_z = this->get_parameter("max_z").as_double();
     closest_point_topic_ = this->get_parameter("closest_point_topic").as_string();
+
+    validate_roi_and_threshold(roi_, detection_threshold_);
 
     // Standard sensor data QoS profile matching Gazebo bridge publisher
     rclcpp::QoS qos_profile(5);

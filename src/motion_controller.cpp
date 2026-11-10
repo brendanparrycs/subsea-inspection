@@ -1,8 +1,10 @@
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <stdexcept>
 #include <string>
 
 #include "geometry_msgs/msg/twist.hpp"
@@ -29,6 +31,19 @@ constexpr auto kManualControlTopic = "/mavros/manual_control/send";
 constexpr auto kSetModeService = "/mavros/set_mode";
 constexpr auto kArmingService = "/mavros/cmd/arming";
 constexpr auto kDefaultCmdVelTopic = "/cmd_vel";
+
+void validate_motion_parameters(double linear_scale, double angular_scale,
+                                double cmd_vel_timeout_sec)
+{
+  if (!std::isfinite(linear_scale) || linear_scale < 0.0 || !std::isfinite(angular_scale) ||
+      angular_scale < 0.0)
+  {
+    throw std::invalid_argument("Motion controller scales must be finite and non-negative");
+  }
+  if (!std::isfinite(cmd_vel_timeout_sec) || cmd_vel_timeout_sec <= 0.0) {
+    throw std::invalid_argument("Parameter 'cmd_vel_timeout' must be finite and > 0");
+  }
+}
 }  // namespace
 
 /// @brief ROS 2 node that controls BlueROV2 Heavy motion via MAVROS services and topics.
@@ -50,6 +65,8 @@ public:
     angular_scale_ = this->get_parameter("angular_scale").as_double();
     cmd_vel_timeout_sec_ = this->get_parameter("cmd_vel_timeout").as_double();
     const auto cmd_vel_topic = this->get_parameter("cmd_vel_topic").as_string();
+
+    validate_motion_parameters(linear_scale_, angular_scale_, cmd_vel_timeout_sec_);
 
     // QoS profile matching MAVROS state publisher
     rclcpp::QoS state_qos(kStateQueueDepth);
