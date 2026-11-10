@@ -5,6 +5,10 @@ waypoint_navigator:
     surge_ki: 0.02
     surge_kd: 0.1
     surge_max_speed: 0.6
+    sway_kp: 0.5
+    sway_ki: 0.02
+    sway_kd: 0.1
+    sway_max_speed: 0.6
     heave_kp: 0.8
     heave_ki: 0.01
     heave_kd: 0.25

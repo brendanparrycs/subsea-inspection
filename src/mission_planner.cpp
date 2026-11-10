@@ -17,6 +17,7 @@
 #include "std_msgs/msg/bool.hpp"
 #include "subsea_inspection/action/navigate_to_waypoint.hpp"
 #include "subsea_inspection/common/config_validation.hpp"
+#include "subsea_inspection/mission_route.hpp"
 #include "yaml-cpp/yaml.h"
 
 using namespace std::chrono_literals;
@@ -519,15 +520,34 @@ private:
             continue;
           }
 
-          // Projection of vector (current_pos - curr_wp) onto segment direction
-          double to_rov_x = current_x_ - curr_wp.x;
-          double to_rov_y = current_y_ - curr_wp.y;
-          double projection = (to_rov_x * seg_dx + to_rov_y * seg_dy) / seg_len;
+          // Find the previous distinct waypoint so route resumption uses the arrival direction.
+          // The first waypoint has no arrival leg and uses the outgoing segment instead.
+          double previous_x = curr_wp.x;
+          double previous_y = curr_wp.y;
+          bool has_previous_waypoint = false;
+          for (std::size_t previous_index = current_waypoint_index_; previous_index > 0;
+               --previous_index)
+          {
+            const auto &previous_wp = waypoints_[previous_index - 1];
+            const double incoming_dx = curr_wp.x - previous_wp.x;
+            const double incoming_dy = curr_wp.y - previous_wp.y;
+            if (std::hypot(incoming_dx, incoming_dy) >= kMinimumSegmentLengthM) {
+              previous_x = previous_wp.x;
+              previous_y = previous_wp.y;
+              has_previous_waypoint = true;
+              break;
+            }
+          }
 
-          double dist_to_curr = std::hypot(current_x_ - curr_wp.x, current_y_ - curr_wp.y);
-          double dist_to_next = std::hypot(current_x_ - next_wp.x, current_y_ - next_wp.y);
+          double max_cross_track_m = curr_wp.acceptance_radius + kDetourAcceptanceRadiusM;
+          if (avoidance_strategy_ == "lateral_bypass") {
+            max_cross_track_m += avoidance_lateral_offset_;
+          }
 
-          if (projection > 0.0 || dist_to_next < dist_to_curr) {
+          if (subsea_inspection::has_passed_waypoint(
+                current_x_, current_y_, previous_x, previous_y, has_previous_waypoint, curr_wp.x,
+                curr_wp.y, next_wp.x, next_wp.y, curr_wp.acceptance_radius, max_cross_track_m))
+          {
             RCLCPP_INFO(this->get_logger(),
                         "[Route Resumption] Detour bypassed '%s'. Advancing to next waypoint '%s'.",
                         curr_wp.name.c_str(), next_wp.name.c_str());

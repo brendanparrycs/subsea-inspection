@@ -145,8 +145,10 @@ private:
     // Map to MAVROS range [-1000, 1000]; neutral depth is 500
     float x = static_cast<float>(
       std::clamp(target_surge * linear_scale_, -kManualControlAxisLimit, kManualControlAxisLimit));
+    // ROS body-frame Twist uses +Y to the left, while MAVLink MANUAL_CONTROL uses +Y to the
+    // right. Convert conventions at this interface boundary.
     float y = static_cast<float>(
-      std::clamp(target_sway * linear_scale_, -kManualControlAxisLimit, kManualControlAxisLimit));
+      std::clamp(-target_sway * linear_scale_, -kManualControlAxisLimit, kManualControlAxisLimit));
     float z =
       static_cast<float>(kManualControlNeutralDepth + std::clamp(target_heave * linear_scale_,
                                                                  -kManualControlVerticalLimit,

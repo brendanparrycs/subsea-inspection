@@ -31,6 +31,11 @@ constexpr double kDefaultSurgeKi = 0.02;
 constexpr double kDefaultSurgeKd = 0.1;
 constexpr double kDefaultSurgeMaxSpeedMps = 0.6;
 
+constexpr double kDefaultSwayKp = 0.5;
+constexpr double kDefaultSwayKi = 0.02;
+constexpr double kDefaultSwayKd = 0.1;
+constexpr double kDefaultSwayMaxSpeedMps = 0.6;
+
 constexpr double kDefaultHeaveKp = 0.8;
 constexpr double kDefaultHeaveKi = 0.01;
 constexpr double kDefaultHeaveKd = 0.25;
@@ -74,7 +79,8 @@ public:
     target_z_(0.0),
     acceptance_radius_(0.0),
     has_odometry_(false),
-    has_active_goal_(false)
+    has_active_goal_(false),
+    station_keeping_(false)
   {
     this->declare_parameter<std::string>("odom_topic", "/model/bluerov2_heavy/odometry");
     this->declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel");
@@ -87,6 +93,12 @@ public:
     this->declare_parameter<double>("surge_ki", kDefaultSurgeKi);
     this->declare_parameter<double>("surge_kd", kDefaultSurgeKd);
     this->declare_parameter<double>("surge_max_speed", kDefaultSurgeMaxSpeedMps);
+
+    // Sway PID parameters used by station keeping.
+    this->declare_parameter<double>("sway_kp", kDefaultSwayKp);
+    this->declare_parameter<double>("sway_ki", kDefaultSwayKi);
+    this->declare_parameter<double>("sway_kd", kDefaultSwayKd);
+    this->declare_parameter<double>("sway_max_speed", kDefaultSwayMaxSpeedMps);
 
     // Heave PID parameters
     this->declare_parameter<double>("heave_kp", kDefaultHeaveKp);
@@ -144,6 +156,10 @@ private:
     const double surge_ki = this->get_parameter("surge_ki").as_double();
     const double surge_kd = this->get_parameter("surge_kd").as_double();
     const double surge_max_speed = this->get_parameter("surge_max_speed").as_double();
+    const double sway_kp = this->get_parameter("sway_kp").as_double();
+    const double sway_ki = this->get_parameter("sway_ki").as_double();
+    const double sway_kd = this->get_parameter("sway_kd").as_double();
+    const double sway_max_speed = this->get_parameter("sway_max_speed").as_double();
     const double heave_kp = this->get_parameter("heave_kp").as_double();
     const double heave_ki = this->get_parameter("heave_ki").as_double();
     const double heave_kd = this->get_parameter("heave_kd").as_double();
@@ -154,6 +170,7 @@ private:
     const double yaw_max_speed = this->get_parameter("yaw_max_speed").as_double();
 
     validate_pid_parameters(surge_kp, surge_ki, surge_kd, surge_max_speed, "Surge");
+    validate_pid_parameters(sway_kp, sway_ki, sway_kd, sway_max_speed, "Sway");
     validate_pid_parameters(heave_kp, heave_ki, heave_kd, heave_max_speed, "Heave");
     validate_pid_parameters(yaw_kp, yaw_ki, yaw_kd, yaw_max_speed, "Yaw");
 
@@ -162,6 +179,7 @@ private:
 
     // Initialize PID controllers
     surge_pid_ = PidController(surge_kp, surge_ki, surge_kd, surge_max_speed, kPidIntegralLimit);
+    sway_pid_ = PidController(sway_kp, sway_ki, sway_kd, sway_max_speed, kPidIntegralLimit);
 
     heave_pid_ = PidController(heave_kp, heave_ki, heave_kd, heave_max_speed, kPidIntegralLimit);
 
@@ -226,9 +244,17 @@ private:
     target_y_ = goal->target_y;
     target_z_ = goal->target_z;
     acceptance_radius_ = goal->acceptance_radius;
+    station_keeping_ = false;
+    const double approach_dx = target_x_ - current_x_;
+    const double approach_dy = target_y_ - current_y_;
+    goal_approach_yaw_ =
+      (geometry::distance_2d(approach_dx, approach_dy) > kMinimumHeadingDistanceM)
+        ? geometry::desired_heading(approach_dx, approach_dy)
+        : current_yaw_;
 
     // Reset PID integrators for a fresh step response
     surge_pid_.reset();
+    sway_pid_.reset();
     heave_pid_.reset();
     yaw_pid_.reset();
 
@@ -267,15 +293,15 @@ private:
       return;
     }
 
-    // When no goal is active, hold position by zeroing velocities
-    if (!has_active_goal_) {
+    // Without a goal or a captured station-keeping target, remain neutral.
+    if (!has_active_goal_ && !station_keeping_) {
       geometry_msgs::msg::Twist stop_twist;
       cmd_vel_publisher_->publish(stop_twist);
       return;
     }
 
     // Handle cancellation request from action client
-    if (active_goal_handle_->is_canceling()) {
+    if (has_active_goal_ && active_goal_handle_->is_canceling()) {
       double dx = target_x_ - current_x_;
       double dy = target_y_ - current_y_;
       double dz = target_z_ - current_z_;
@@ -309,61 +335,85 @@ private:
     double dist_2d = geometry::distance_2d(dx, dy);
 
     // Check waypoint arrival
-    if (dist_3d < acceptance_radius_) {
-      geometry_msgs::msg::Twist stop_twist;
-      cmd_vel_publisher_->publish(stop_twist);
-
+    if (has_active_goal_ && dist_3d < acceptance_radius_) {
       auto result = std::make_shared<NavigateToWaypoint::Result>();
       result->success = true;
       result->elapsed_time = (this->now() - goal_start_time_).seconds();
       result->final_distance = dist_3d;
+
+      // A zero velocity command only removes commanded thrust; it does not resist horizontal
+      // current. Capture the achieved pose as a hold target and keep running the same closed-loop
+      // controller until another action goal replaces it.
+      target_x_ = current_x_;
+      target_y_ = current_y_;
+      target_z_ = current_z_;
+      station_yaw_ = goal_approach_yaw_;
+      station_keeping_ = true;
+      surge_pid_.reset();
+      sway_pid_.reset();
+      heave_pid_.reset();
+      yaw_pid_.reset();
+
       active_goal_handle_->succeed(result);
       has_active_goal_ = false;
 
       RCLCPP_INFO(this->get_logger(),
-                  ">> Waypoint Reached! Holding station at [X: %.2f, Y: %.2f, Z: %.2f] in %.2fs "
-                  "(error: %.2fm)",
+                  ">> Waypoint Reached! Station-keeping at [X: %.2f, Y: %.2f, Z: %.2f] after "
+                  "%.2fs (error: %.2fm)",
                   current_x_, current_y_, current_z_, result->elapsed_time, dist_3d);
       return;
     }
 
-    // 1. Yaw Heading Guidance (Line-of-Sight)
-    double desired_yaw =
-      (dist_2d > kMinimumHeadingDistanceM) ? geometry::desired_heading(dx, dy) : current_yaw_;
-    double yaw_error = geometry::angle_error(desired_yaw, current_yaw_);
-    double cmd_yaw = yaw_pid_.compute(yaw_error, dt);
-
-    // 2. Vertical Heave Guidance
-    double cmd_heave = heave_pid_.compute(dz, dt);
-
-    // 3. Forward Surge Guidance (with Turn-Before-Drive gating)
-    // Tighten tolerance on waypoint approach to prevent orbiting while allowing smooth capture
-    double effective_tolerance =
-      (dist_2d < kCloseRangeDistanceM)
-        ? (kCloseRangeHeadingToleranceDeg * subsea_inspection::constants::kDegreesToRadians)
-        : heading_tolerance_rad_;
     double cmd_surge = 0.0;
-    if (std::abs(yaw_error) < effective_tolerance) {
-      // Smoothly scale speed as heading error drops to zero (cos^2 for stronger suppression on
-      // slight misalignments)
-      double cos_err = std::max(0.0, std::cos(yaw_error));
-      double alignment_factor = cos_err * cos_err;
-      cmd_surge = surge_pid_.compute(dist_2d, dt) * alignment_factor;
+    double cmd_sway = 0.0;
+    double cmd_heave = heave_pid_.compute(dz, dt);
+    double cmd_yaw = 0.0;
+    double yaw_error = 0.0;
+
+    if (station_keeping_ && !has_active_goal_) {
+      // Hold the captured yaw and correct position in the vehicle's body frame. Using sway
+      // avoids rotating the inspection camera away from the pipeline just to fight lateral current.
+      double surge_error = 0.0;
+      double sway_error = 0.0;
+      geometry::world_to_body_frame(dx, dy, current_yaw_, surge_error, sway_error);
+      yaw_error = geometry::angle_error(station_yaw_, current_yaw_);
+      cmd_surge = surge_pid_.compute(surge_error, dt);
+      cmd_sway = sway_pid_.compute(sway_error, dt);
+      cmd_yaw = yaw_pid_.compute(yaw_error, dt);
+    } else {
+      // Waypoint transit uses line-of-sight heading and turn-before-drive guidance.
+      const double desired_yaw =
+        (dist_2d > kMinimumHeadingDistanceM) ? geometry::desired_heading(dx, dy) : current_yaw_;
+      yaw_error = geometry::angle_error(desired_yaw, current_yaw_);
+      cmd_yaw = yaw_pid_.compute(yaw_error, dt);
+
+      const double effective_tolerance =
+        (dist_2d < kCloseRangeDistanceM)
+          ? (kCloseRangeHeadingToleranceDeg * subsea_inspection::constants::kDegreesToRadians)
+          : heading_tolerance_rad_;
+      if (std::abs(yaw_error) < effective_tolerance) {
+        const double cos_err = std::max(0.0, std::cos(yaw_error));
+        const double alignment_factor = cos_err * cos_err;
+        cmd_surge = surge_pid_.compute(dist_2d, dt) * alignment_factor;
+      }
     }
 
     // Publish velocity command
     geometry_msgs::msg::Twist cmd_vel;
     cmd_vel.linear.x = cmd_surge;
-    cmd_vel.linear.y = 0.0;
+    cmd_vel.linear.y = cmd_sway;
     cmd_vel.linear.z = cmd_heave;
     cmd_vel.angular.z = cmd_yaw;
     cmd_vel_publisher_->publish(cmd_vel);
 
-    // Publish Action Feedback
-    auto feedback = std::make_shared<NavigateToWaypoint::Feedback>();
-    feedback->distance_remaining = dist_3d;
-    feedback->heading_error_deg = yaw_error * subsea_inspection::constants::kRadiansToDegrees;
-    active_goal_handle_->publish_feedback(feedback);
+    // Publish feedback only while an action goal is active. In station-keeping mode the same
+    // controller resists current around the captured pose, but there is no active action client.
+    if (has_active_goal_) {
+      auto feedback = std::make_shared<NavigateToWaypoint::Feedback>();
+      feedback->distance_remaining = dist_3d;
+      feedback->heading_error_deg = yaw_error * subsea_inspection::constants::kRadiansToDegrees;
+      active_goal_handle_->publish_feedback(feedback);
+    }
 
     RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
                          "[Nav Action] Dist: %.2f m (2D: %.2f, Z: %.2f) | YawErr: %.1f deg | Cmd: "
@@ -406,6 +456,15 @@ private:
   /// @brief Flag indicating an action goal is actively being pursued.
   bool has_active_goal_;
 
+  /// @brief Whether the controller should hold the most recently reached pose between goals.
+  bool station_keeping_;
+
+  /// @brief Yaw captured when station keeping begins, in radians.
+  double station_yaw_{0.0};
+
+  /// @brief Horizontal approach heading for the most recently accepted waypoint.
+  double goal_approach_yaw_{0.0};
+
   /// @brief Timestamp when current goal began execution.
   rclcpp::Time goal_start_time_;
 
@@ -414,6 +473,9 @@ private:
 
   /// @brief PID controller for forward surge velocity.
   PidController surge_pid_;
+
+  /// @brief PID controller for lateral sway during station keeping.
+  PidController sway_pid_;
 
   /// @brief PID controller for vertical heave velocity.
   PidController heave_pid_;
