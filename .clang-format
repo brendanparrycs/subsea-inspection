@@ -8,29 +8,14 @@ AllowShortBlocksOnASingleLine: Never
 AllowShortFunctionsOnASingleLine: Empty
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
-BreakBeforeBraces: Custom
+BreakBeforeBraces: Attach
 BreakConstructorInitializers: BeforeColon
-BraceWrapping:
-  AfterCaseLabel: false
-  AfterClass: true
-  AfterControlStatement: MultiLine
-  AfterEnum: true
-  AfterFunction: true
-  AfterNamespace: true
-  AfterStruct: true
-  AfterUnion: true
-  BeforeCatch: true
-  BeforeElse: false
-  IndentBraces: false
-  SplitEmptyFunction: false
-  SplitEmptyNamespace: false
-  SplitEmptyRecord: false
 ColumnLimit: 100
-ContinuationIndentWidth: 2
+ContinuationIndentWidth: 4
 ConstructorInitializerIndentWidth: 0
 DerivePointerAlignment: false
 IndentCaseLabels: false
-IndentWidth: 2
+IndentWidth: 4
 PointerAlignment: Right
 PackConstructorInitializers: Never
 SortIncludes: CaseSensitive

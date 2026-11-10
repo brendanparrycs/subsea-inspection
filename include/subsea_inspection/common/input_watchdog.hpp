@@ -3,8 +3,7 @@
 
 #include <chrono>
 
-namespace subsea_inspection::input_watchdog
-{
+namespace subsea_inspection::input_watchdog {
 
 /// @brief Reports whether input has been absent for at least the configured timeout.
 /// @param last_input Steady-clock time when input was last received.
@@ -13,9 +12,8 @@ namespace subsea_inspection::input_watchdog
 /// @return True if the input age meets or exceeds the timeout.
 inline bool is_stale(std::chrono::steady_clock::time_point last_input,
                      std::chrono::steady_clock::time_point now,
-                     std::chrono::duration<double> timeout)
-{
-  return now - last_input >= timeout;
+                     std::chrono::duration<double> timeout) {
+    return now - last_input >= timeout;
 }
 
 }  // namespace subsea_inspection::input_watchdog

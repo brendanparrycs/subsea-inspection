@@ -1,8 +1,7 @@
 #ifndef SUBSEA_INSPECTION__COMMON__TOPIC_NAMES_HPP_
 #define SUBSEA_INSPECTION__COMMON__TOPIC_NAMES_HPP_
 
-namespace subsea_inspection::topic_names
-{
+namespace subsea_inspection::topic_names {
 
 /// @brief Default velocity command topic.
 inline constexpr char kDefaultCmdVel[] = "/cmd_vel";
