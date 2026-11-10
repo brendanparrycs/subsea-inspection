@@ -310,7 +310,7 @@ private:
     const bool odometry_stale = subsea_inspection::input_watchdog::is_stale(
       last_odometry_time_, std::chrono::steady_clock::now(),
       std::chrono::duration<double>(odom_timeout_sec_));
-    if (odometry_stale && (has_active_goal_ || station_keeping_)) {
+    if (has_odometry_ && odometry_stale && (has_active_goal_ || station_keeping_)) {
       RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
                             "Odometry exceeded %.2f s timeout; stopping navigation",
                             odom_timeout_sec_);

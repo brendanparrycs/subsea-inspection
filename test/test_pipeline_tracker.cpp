@@ -161,7 +161,7 @@ TEST(PipelineTrackerTest, CoverageAccumulationAndReset)
 TEST(PipelineTrackerTest, Point3DInteroperability)
 {
   const Point3D p1(1.0, 2.0, 3.0);
-  const PipePoint3D p2 = p1;
+  const PipePoint3D p2(p1);
 
   EXPECT_DOUBLE_EQ(p2.x, 1.0);
   EXPECT_DOUBLE_EQ(p2.y, 2.0);
