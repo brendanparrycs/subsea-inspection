@@ -1,12 +1,19 @@
 """Launch the autonomous pipeline inspection scenario."""
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition
+from launch.actions import (
+    DeclareLaunchArgument,
+    ExecuteProcess,
+    GroupAction,
+    IncludeLaunchDescription,
+    RegisterEventHandler,
+)
+from launch.conditions import IfCondition, UnlessCondition
+from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node
-from launch_ros.substitutions import FindPackageShare
+from launch_ros.substitutions import FindPackagePrefix, FindPackageShare
 
 TEST_OBSTACLE_SIZE_M = 0.5
 
@@ -37,6 +44,12 @@ def generate_launch_description():
         'gui',
         default_value='true',
         description='Whether to open the Gazebo GUI',
+        choices=['true', 'false'],
+    )
+    generate_scenario_arg = DeclareLaunchArgument(
+        'generate_scenario',
+        default_value='true',
+        description='Generate a pipeline model and matching mission before launch',
         choices=['true', 'false'],
     )
     mission_file_arg = DeclareLaunchArgument(
@@ -91,6 +104,7 @@ def generate_launch_description():
 
     start_sim = LaunchConfiguration('start_sim')
     gui = LaunchConfiguration('gui')
+    generate_scenario = LaunchConfiguration('generate_scenario')
     mission_file = LaunchConfiguration('mission_file')
     common_topics_file = PathJoinSubstitution(
         [
@@ -240,10 +254,37 @@ def generate_launch_description():
         ],
     )
 
+    scenario_actions = [
+        sensor_simulation,
+        pipeline_spawner,
+        depth_sensor,
+        autonomy_core,
+        obstacle_detection,
+        waypoint_navigator,
+        mission_planner,
+        obstacle_spawner,
+        inspection_tracker,
+    ]
+    scenario_generator = ExecuteProcess(
+        cmd=[
+            PathJoinSubstitution(
+                [
+                    FindPackagePrefix('subsea_inspection'),
+                    'lib',
+                    'subsea_inspection',
+                    'generate_pipeline_scenario.py',
+                ]
+            )
+        ],
+        output='screen',
+        condition=IfCondition(generate_scenario),
+    )
+
     return LaunchDescription(
         [
             start_sim_arg,
             gui_arg,
+            generate_scenario_arg,
             mission_file_arg,
             avoidance_strategy_arg,
             avoidance_heave_clearance_arg,
@@ -252,14 +293,13 @@ def generate_launch_description():
             obstacle_x_arg,
             obstacle_y_arg,
             obstacle_z_arg,
-            sensor_simulation,
-            pipeline_spawner,
-            depth_sensor,
-            autonomy_core,
-            obstacle_detection,
-            waypoint_navigator,
-            mission_planner,
-            obstacle_spawner,
-            inspection_tracker,
+            RegisterEventHandler(
+                OnProcessExit(target_action=scenario_generator, on_exit=scenario_actions)
+            ),
+            scenario_generator,
+            GroupAction(
+                actions=scenario_actions,
+                condition=UnlessCondition(generate_scenario),
+            ),
         ]
     )
